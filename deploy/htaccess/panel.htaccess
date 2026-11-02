@@ -9,3 +9,4 @@
 
     RewriteRule . /panel/index.html [L]
 </IfModule>
+

@@ -55,3 +55,4 @@ describe('App Activista — Validaciones INE, UUID v7 y Cifrado Local AES-GCM', 
     expect(h1).toBe(h2);
   });
 });
+

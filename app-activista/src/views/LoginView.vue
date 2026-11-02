@@ -87,46 +87,6 @@
           Guardar Nueva Contraseña
         </button>
       </form>
-
-      <!-- Paso C: Verificación OTP del teléfono del Activista (RF-P1.1) -->
-      <div v-else-if="store.needsPhoneVerification" class="space-y-4">
-        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
-          <p class="font-bold">Verificación Obligatoria de Celular (Twilio Verify)</p>
-          <p>
-            Ingresa el código de 6 dígitos enviado por SMS a tu número
-            <strong>{{ store.user?.activist?.telefono }}</strong>. Hasta verificarlo no podrás sincronizar Talentos.
-          </p>
-          <p v-if="demoOtpCode" class="font-mono text-emerald-800 pt-1">
-            Código Demo: <strong>{{ demoOtpCode }}</strong>
-          </p>
-        </div>
-
-        <input
-          v-model="otpCode"
-          type="text"
-          inputmode="numeric"
-          maxlength="6"
-          placeholder="123456"
-          class="w-full px-4 py-3 rounded-xl border border-slate-300 text-center text-2xl font-mono tracking-widest"
-        />
-
-        <div class="flex gap-2">
-          <button
-            type="button"
-            class="flex-1 py-3 rounded-xl bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer"
-            @click="requestNewOtp"
-          >
-            Enviar / Reenviar SMS
-          </button>
-          <button
-            type="button"
-            class="flex-1 py-3 rounded-xl bg-emerald-700 text-white font-bold text-sm cursor-pointer"
-            @click="submitOtp"
-          >
-            Verificar Código
-          </button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -143,8 +103,6 @@ const username = ref('');
 const password = ref('');
 const pin = ref('1234');
 const newPassword = ref('');
-const otpCode = ref('');
-const demoOtpCode = ref('');
 const loading = ref(false);
 const errorMsg = ref('');
 
@@ -158,10 +116,8 @@ async function handleLogin() {
   try {
     await store.login(username.value, password.value);
     await store.setOfflinePin(pin.value);
-    if (!store.mustChangePassword && !store.needsPhoneVerification) {
+    if (!store.mustChangePassword) {
       router.push('/');
-    } else if (store.needsPhoneVerification) {
-      await requestNewOtp();
     }
   } catch (err) {
     errorMsg.value = err.response?.data?.errors?.[0] || err.message || 'Credenciales inválidas.';
@@ -175,35 +131,12 @@ async function handleChangePassword() {
   loading.value = true;
   try {
     await store.changePassword(newPassword.value);
-    if (!store.needsPhoneVerification) {
-      router.push('/');
-    } else {
-      await requestNewOtp();
-    }
+    router.push('/');
   } catch (err) {
     errorMsg.value = err.response?.data?.errors?.[0] || 'Error al cambiar la contraseña.';
   } finally {
     loading.value = false;
   }
 }
-
-async function requestNewOtp() {
-  errorMsg.value = '';
-  try {
-    const data = await store.sendPhoneOtp();
-    demoOtpCode.value = data?.demo_code || '';
-  } catch (err) {
-    errorMsg.value = err.response?.data?.errors?.[0] || 'Espera 60 segundos antes de reenviar el código.';
-  }
-}
-
-async function submitOtp() {
-  errorMsg.value = '';
-  try {
-    await store.verifyPhoneOtp(otpCode.value);
-    router.push('/');
-  } catch (err) {
-    errorMsg.value = err.response?.data?.errors?.[0] || 'Código OTP inválido.';
-  }
-}
 </script>
+

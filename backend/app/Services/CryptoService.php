@@ -76,3 +76,4 @@ class CryptoService
         return hash_hmac('sha256', $normalized, $this->pepper);
     }
 }
+

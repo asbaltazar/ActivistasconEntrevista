@@ -30,7 +30,7 @@
       <label class="flex items-start gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 cursor-pointer">
         <input v-model="form.consentimiento_aceptado" type="checkbox" class="mt-1 w-5 h-5 accent-emerald-700" />
         <span class="text-xs font-bold text-emerald-950">
-          El ciudadano otorga su consentimiento expreso para el tratamiento de sus datos personales y sensibles (INE y fotografía facial) y acepta recibir confirmación e información ciudadana vía SMS.
+          El ciudadano otorga su consentimiento expreso para el tratamiento de sus datos personales y sensibles (INE y fotografía facial) conforme al Aviso de Privacidad.
         </span>
       </label>
 
@@ -251,7 +251,7 @@
     <div v-if="step === 6" class="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
       <h3 class="text-base font-extrabold text-slate-900">6. Datos de Contacto del Talento</h3>
       <p class="text-xs text-slate-600">
-        El Talento recibirá un SMS automático de bienvenida con el enlace al Aviso de Privacidad. (No requiere OTP).
+        Captura el teléfono celular a 10 dígitos y correo electrónico opcional del ciudadano.
       </p>
 
       <div>
@@ -740,3 +740,4 @@ onMounted(() => {
   captureDeviceGps();
 });
 </script>
+

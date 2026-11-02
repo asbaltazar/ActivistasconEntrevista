@@ -92,3 +92,4 @@ jobs:
           rsync -az -e "ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no" ./app-activista/dist/ "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST:~/domains/activistas.solytecmx.com/public_html/"
           rsync -az --delete -e "ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no" ./panel/dist/ "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST:~/domains/activistas.solytecmx.com/public_html/panel/"
           ssh -p "$HOSTINGER_SSH_PORT" -o StrictHostKeyChecking=no "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST" "cd ~/domains/activistas.solytecmx.com/ci4 && php spark migrate --all"
+

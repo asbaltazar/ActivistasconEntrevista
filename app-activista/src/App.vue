@@ -72,7 +72,7 @@
 
     <!-- Navegación inferior para uso con una mano en exterior -->
     <nav
-      v-if="store.isAuthenticated && store.unlocked && !store.mustChangePassword && !store.needsPhoneVerification"
+      v-if="store.isAuthenticated && store.unlocked && !store.mustChangePassword"
       class="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-slate-200 grid grid-cols-3 text-xs font-bold shadow-lg z-40"
     >
       <router-link
@@ -124,3 +124,4 @@ async function handleUnlock() {
   }
 }
 </script>
+

@@ -12,8 +12,7 @@
         />
         <select v-model="filters.status" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadActivists">
           <option value="">Todos los estatus</option>
-          <option value="activo">Activos (Verificados)</option>
-          <option value="pendiente_verificacion">Pendientes de Verificación OTP</option>
+          <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </select>
         <select v-model="filters.estado_id" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadActivists">
@@ -47,7 +46,7 @@
           <thead>
             <tr class="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
               <th class="py-3 px-4">Activista / Usuario</th>
-              <th class="py-3 px-4">Teléfono (OTP)</th>
+              <th class="py-3 px-4">Teléfono</th>
               <th class="py-3 px-4">Zona Operativa</th>
               <th class="py-3 px-4">Avance Meta</th>
               <th class="py-3 px-4">Estatus</th>
@@ -60,14 +59,8 @@
                 <div class="font-bold text-slate-900">{{ act.nombre_completo }}</div>
                 <div class="text-xs text-slate-500">Usuario: <span class="font-mono font-semibold">{{ act.username }}</span> · {{ act.active_devices }} disp.</div>
               </td>
-              <td class="py-3 px-4">
-                <div class="font-mono font-semibold text-slate-800">{{ act.telefono }}</div>
-                <div v-if="act.telefono_verificado_at" class="text-[11px] text-emerald-700 font-medium flex items-center gap-1">
-                  <i class="pi pi-check-circle"></i> Verificado ({{ act.telefono_verificado_at.slice(0, 10) }})
-                </div>
-                <div v-else class="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
-                  <i class="pi pi-Clock"></i> Sin verificar OTP (bloquea sync)
-                </div>
+              <td class="py-3 px-4 font-mono font-semibold text-slate-800">
+                {{ act.telefono }}
               </td>
               <td class="py-3 px-4 text-xs text-slate-700">
                 <div class="font-semibold">{{ act.estado_nombre }}</div>
@@ -83,25 +76,12 @@
               <td class="py-3 px-4">
                 <span
                   class="px-2.5 py-1 rounded-full text-xs font-semibold"
-                  :class="{
-                    'bg-emerald-100 text-emerald-800': act.status === 'activo',
-                    'bg-amber-100 text-amber-800': act.status === 'pendiente_verificacion',
-                    'bg-rose-100 text-rose-800': act.status === 'suspendido',
-                  }"
+                  :class="act.status === 'activo' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'"
                 >
                   {{ act.status }}
                 </span>
               </td>
               <td class="py-3 px-4 text-right space-x-1">
-                <button
-                  v-if="auth.canWrite && !act.telefono_verificado_at"
-                  type="button"
-                  title="Verificar teléfono con código OTP (Twilio Verify)"
-                  class="px-2.5 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold cursor-pointer"
-                  @click="openOtpModal(act)"
-                >
-                  <i class="pi pi-mobile"></i> Verificar OTP
-                </button>
                 <button
                   v-if="auth.canWrite"
                   type="button"
@@ -177,7 +157,6 @@
                 placeholder="5512345678"
                 class="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
               />
-              <span class="text-[11px] text-slate-400">Se enviará código OTP vía Twilio Verify</span>
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Correo Electrónico (Opcional)</label>
@@ -214,16 +193,10 @@
               <label class="block text-xs font-semibold text-slate-600 mb-1">Estatus</label>
               <select v-model="form.status" class="w-full px-3 py-2 rounded-lg border border-slate-300">
                 <option value="activo">Activo</option>
-                <option value="pendiente_verificacion">Pendiente Verificación</option>
                 <option value="suspendido">Suspendido</option>
               </select>
             </div>
           </div>
-
-          <label v-if="!form.id" class="flex items-center gap-2 text-xs text-slate-700 pt-1">
-            <input v-model="form.send_sms" type="checkbox" class="rounded border-slate-300" />
-            <span>Enviar usuario y contraseña temporal por SMS (Twilio) al crear</span>
-          </label>
 
           <div class="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
@@ -237,7 +210,7 @@
               type="submit"
               class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
             >
-              {{ form.id ? 'Guardar Cambios' : 'Crear y Enviar OTP' }}
+              {{ form.id ? 'Guardar Cambios' : 'Crear Activista' }}
             </button>
           </div>
         </form>
@@ -257,9 +230,6 @@
         <div class="p-4 rounded-xl bg-slate-100 font-mono text-sm space-y-1">
           <div><span class="text-slate-500">Usuario:</span> <strong>{{ credentialsModal.username }}</strong></div>
           <div><span class="text-slate-500">Contraseña temporal:</span> <strong>{{ credentialsModal.temporary_password }}</strong></div>
-          <div v-if="credentialsModal.otp?.demo_code" class="text-amber-700 pt-1">
-            <span class="text-slate-500">Código OTP (Demo/Local):</span> <strong>{{ credentialsModal.otp.demo_code }}</strong>
-          </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -286,62 +256,6 @@
           >
             Cerrar
           </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal Verificación OTP del Teléfono del Activista (RF-P1.1) -->
-    <div v-if="otpModal.show" class="fixed inset-0 bg-slate-950/60 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-        <h3 class="text-lg font-bold text-slate-900">Verificación OTP del Activista (Twilio Verify)</h3>
-        <p class="text-xs text-slate-600">
-          Capture el código de 6 dígitos enviado por SMS al celular <strong>{{ otpModal.telefono }}</strong> de
-          <strong>{{ otpModal.nombre }}</strong>. Hasta verificarse, el Activista no puede sincronizar Talentos.
-        </p>
-
-        <div v-if="otpModal.demoCode" class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-mono">
-          Modo desarrollo — Código OTP generado: <strong>{{ otpModal.demoCode }}</strong>
-        </div>
-
-        <div v-if="otpModal.error" class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-          {{ otpModal.error }}
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Código de 6 dígitos</label>
-          <input
-            v-model="otpModal.code"
-            type="text"
-            maxlength="6"
-            placeholder="123456"
-            class="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-center text-xl font-mono tracking-widest"
-          />
-        </div>
-
-        <div class="flex items-center justify-between pt-2">
-          <button
-            type="button"
-            class="text-xs text-emerald-700 hover:underline font-semibold cursor-pointer"
-            @click="resendOtp"
-          >
-            Reenviar código SMS (cada 60 s)
-          </button>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              class="px-3.5 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer"
-              @click="otpModal.show = false"
-            >
-              Cerrar
-            </button>
-            <button
-              type="button"
-              class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer"
-              @click="verifyOtpCode"
-            >
-              Verificar Celular
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -379,18 +293,7 @@ const form = reactive({
   municipio_id: null,
   meta: 50,
   fecha_limite: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-  status: 'pendiente_verificacion',
-  send_sms: true,
-});
-
-const otpModal = reactive({
-  show: false,
-  activistId: null,
-  nombre: '',
-  telefono: '',
-  code: '',
-  demoCode: '',
-  error: '',
+  status: 'activo',
 });
 
 const filteredMunicipios = computed(() =>
@@ -418,8 +321,7 @@ function openCreateModal() {
     municipio_id: null,
     meta: 50,
     fecha_limite: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-    status: 'pendiente_verificacion',
-    send_sms: true,
+    status: 'activo',
   });
   modalError.value = '';
   showModal.value = true;
@@ -438,7 +340,6 @@ function openEditModal(act) {
     meta: act.meta,
     fecha_limite: act.fecha_limite || '',
     status: act.status,
-    send_sms: false,
   });
   modalError.value = '';
   showModal.value = true;
@@ -448,18 +349,9 @@ async function saveActivist() {
   modalError.value = '';
   try {
     if (form.id) {
-      const { data: res } = await api.put(`/admin/activists/${form.id}`, form);
+      await api.put(`/admin/activists/${form.id}`, form);
       showModal.value = false;
       await loadActivists();
-      if (res.data?.phone_changed) {
-        otpModal.activistId = form.id;
-        otpModal.nombre = `${form.nombre} ${form.ap_paterno}`;
-        otpModal.telefono = form.telefono;
-        otpModal.code = '';
-        otpModal.demoCode = res.data?.otp?.demo_code || '';
-        otpModal.error = '';
-        otpModal.show = true;
-      }
     } else {
       const { data: res } = await api.post('/admin/activists', form);
       showModal.value = false;
@@ -471,42 +363,8 @@ async function saveActivist() {
   }
 }
 
-async function openOtpModal(act) {
-  otpModal.activistId = act.id;
-  otpModal.nombre = act.nombre_completo;
-  otpModal.telefono = act.telefono;
-  otpModal.code = '';
-  otpModal.demoCode = '';
-  otpModal.error = '';
-  otpModal.show = true;
-  await resendOtp();
-}
-
-async function resendOtp() {
-  otpModal.error = '';
-  try {
-    const { data: res } = await api.post(`/admin/activists/${otpModal.activistId}/verify-phone`);
-    otpModal.demoCode = res.data?.demo_code || '';
-  } catch (err) {
-    otpModal.error = err.response?.data?.errors?.[0] || 'No se pudo enviar el código OTP.';
-  }
-}
-
-async function verifyOtpCode() {
-  otpModal.error = '';
-  try {
-    await api.post(`/admin/activists/${otpModal.activistId}/verify-phone/check`, {
-      code: otpModal.code,
-    });
-    otpModal.show = false;
-    await loadActivists();
-  } catch (err) {
-    otpModal.error = err.response?.data?.errors?.[0] || 'Código OTP incorrecto.';
-  }
-}
-
 async function handleResetPassword(act) {
-  const { data: res } = await api.post(`/admin/activists/${act.id}/reset-password`, { send_sms: true });
+  const { data: res } = await api.post(`/admin/activists/${act.id}/reset-password`);
   credentialsModal.value = res.data;
 }
 

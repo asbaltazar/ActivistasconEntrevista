@@ -84,7 +84,6 @@ const navItems = [
   { to: '/talentos', label: 'Padrón de Talentos', icon: 'pi pi-id-card' },
   { to: '/mapa', label: 'Mapa Nacional', icon: 'pi pi-map-marker' },
   { to: '/reportes', label: 'Reportes y Exportación', icon: 'pi pi-file-excel' },
-  { to: '/sms', label: 'Avisos SMS (Twilio)', icon: 'pi pi-send' },
   { to: '/auditoria', label: 'Auditoría y Ajustes', icon: 'pi pi-shield' },
 ];
 

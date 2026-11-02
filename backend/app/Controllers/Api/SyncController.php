@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Sms\TwilioSmsProvider;
 use App\Services\CryptoService;
 use CodeIgniter\HTTP\ResponseInterface;
 
@@ -31,14 +30,8 @@ class SyncController extends BaseApiController
             return $this->apiResponse(null, null, ['Solo un Activista activo puede sincronizar Talentos.'], 403);
         }
 
-        // RF-P1.1: Hasta verificarse, el Activista queda en estado pendiente_verificacion y NO puede sincronizar Talentos.
-        if ($activist !== null && (($activist['status'] ?? '') === 'pendiente_verificacion' || empty($activist['telefono_verificado_at']))) {
-            return $this->apiResponse(
-                null,
-                ['code' => 'PHONE_VERIFICATION_REQUIRED'],
-                ['Su número de teléfono aún no ha sido verificado con código OTP. Verifique su celular para poder sincronizar Talentos.'],
-                403
-            );
+        if ($activist !== null && ($activist['status'] ?? '') === 'suspendido') {
+            return $this->apiResponse(null, null, ['Su cuenta de Activista está suspendida.'], 403);
         }
 
         $input   = $this->inputData();
@@ -256,7 +249,6 @@ class SyncController extends BaseApiController
 
         if ($existingByUuid !== null) {
             $talentId = (int) $existingByUuid['id'];
-            // Si aún no está bloqueado por validación, actualizar datos
             if (($existingByUuid['validacion'] ?? 'pendiente') !== 'validado') {
                 $this->db->table('talents')
                     ->where('id', $talentId)
@@ -309,9 +301,6 @@ class SyncController extends BaseApiController
             'created_at'  => $now,
         ]);
 
-        // RF-P11: Enviar SMS automático de bienvenida al registrarse
-        $this->sendWelcomeSms($talentId, $telefono, $nombre, (string) $seccion);
-
         $this->logAudit('talent.sync_create', 'talents', $talentId, ['uuid' => $uuid, 'seccion' => $seccion]);
 
         return [
@@ -358,47 +347,6 @@ class SyncController extends BaseApiController
         ];
     }
 
-    private function sendWelcomeSms(int $talentId, string $telefono, string $nombre, string $seccion): void
-    {
-        $now = date('Y-m-d H:i:s');
-
-        // Verificar lista de exclusión (sms_optouts)
-        $isOptedOut = $this->db->table('sms_optouts')->where('telefono', $telefono)->countAllResults() > 0;
-        if ($isOptedOut) {
-            return;
-        }
-
-        $tplRow = $this->db->table('settings')
-            ->where('setting_key', 'sms_bienvenida_plantilla')
-            ->get()
-            ->getRowArray();
-
-        $template = $tplRow !== null && !empty($tplRow['setting_value'])
-            ? (string) $tplRow['setting_value']
-            : 'Hola {nombre}, tu registro en Red Ciudadana (Sec {seccion}) fue exitoso. Aviso: https://activistas.solytecmx.com/aviso Responde BAJA para cancelar.';
-
-        $body = strtr($template, [
-            '{nombre}'  => explode(' ', trim($nombre))[0] ?? $nombre,
-            '{seccion}' => $seccion,
-        ]);
-        $cleanBody = TwilioSmsProvider::sanitizeGsm7($body);
-
-        $provider = new TwilioSmsProvider();
-        $sent     = $provider->sendSms($telefono, $cleanBody);
-
-        $this->db->table('sms_messages')->insert([
-            'talent_id'   => $talentId,
-            'telefono'    => $telefono,
-            'plantilla'   => 'bienvenida',
-            'cuerpo'      => $cleanBody,
-            'provider_id' => $sent['provider_id'],
-            'status'      => $sent['status'],
-            'error'       => $sent['error'],
-            'sent_at'     => $sent['success'] ? $now : null,
-            'created_at'  => $now,
-        ]);
-    }
-
     /**
      * POST /api/v1/talents/{uuid}/files
      * Subida autenticada de imágenes fuera de public_html (`writable/uploads/talents/{uuid}/`).
@@ -415,7 +363,7 @@ class SyncController extends BaseApiController
             return $this->apiResponse(null, null, ['Talento no encontrado para asociar archivos.'], 404);
         }
 
-        $talentId = (int) $talent['id'];
+        $talentId  = (int) $talent['id'];
         $targetDir = rtrim(WRITEPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'talents' . DIRECTORY_SEPARATOR . $talent['uuid'];
         if (!is_dir($targetDir)) {
             mkdir($targetDir, 0750, true);
@@ -425,8 +373,6 @@ class SyncController extends BaseApiController
         $savedFiles = [];
         $now        = date('Y-m-d H:i:s');
 
-        // 1. Archivos multipart
-        $uploadedFiles = $this->request->getFiles();
         foreach ($validTypes as $tipo) {
             $file = $this->request->getFile($tipo);
             if ($file !== null && $file->isValid() && !$file->hasMoved()) {
@@ -452,8 +398,7 @@ class SyncController extends BaseApiController
             }
         }
 
-        // 2. Archivos enviados en base64 (para sincronización offline en un solo payload)
-        $input = $this->inputData();
+        $input     = $this->inputData();
         $base64Map = [];
         foreach ($validTypes as $tipo) {
             if (!empty($input[$tipo]) && is_string($input[$tipo])) {
@@ -461,7 +406,7 @@ class SyncController extends BaseApiController
             }
         }
         if (count($base64Map) > 0) {
-            $extra = $this->saveBase64FilesForTalent($talentId, (string) $talent['uuid'], $base64Map);
+            $extra      = $this->saveBase64FilesForTalent($talentId, (string) $talent['uuid'], $base64Map);
             $savedFiles = array_merge($savedFiles, $extra);
         }
 
@@ -587,27 +532,27 @@ class SyncController extends BaseApiController
 
         foreach ($rows as $row) {
             $list[] = [
-                'id'               => (int) $row['id'],
-                'uuid'             => (string) $row['uuid'],
-                'nombre'           => (string) $row['nombre'],
-                'ap_paterno'       => (string) $row['ap_paterno'],
-                'ap_materno'       => $row['ap_materno'],
-                'calle_numero'     => $this->crypto->decrypt((string) $row['calle_numero']),
-                'colonia'          => (string) $row['colonia'],
-                'codigo_postal'    => (string) $row['codigo_postal'],
-                'estado_id'        => (int) $row['estado_id'],
-                'municipio_id'     => (int) $row['municipio_id'],
-                'seccion'          => (int) $row['seccion'],
-                'vigencia'         => (int) $row['vigencia'],
-                'clave_elector'    => $this->crypto->decrypt((string) $row['clave_elector_enc']),
-                'curp'             => $this->crypto->decrypt($row['curp_enc'] !== null ? (string) $row['curp_enc'] : null),
-                'telefono'         => (string) $row['telefono'],
-                'lat'              => (float) $row['lat'],
-                'lng'              => (float) $row['lng'],
-                'validacion'       => (string) $row['validacion'],
-                'observaciones'    => $row['observaciones'],
-                'editable'         => ($row['validacion'] ?? 'pendiente') !== 'validado',
-                'created_at'       => $row['created_at'],
+                'id'            => (int) $row['id'],
+                'uuid'          => (string) $row['uuid'],
+                'nombre'        => (string) $row['nombre'],
+                'ap_paterno'    => (string) $row['ap_paterno'],
+                'ap_materno'    => $row['ap_materno'],
+                'calle_numero'  => $this->crypto->decrypt((string) $row['calle_numero']),
+                'colonia'       => (string) $row['colonia'],
+                'codigo_postal' => (string) $row['codigo_postal'],
+                'estado_id'     => (int) $row['estado_id'],
+                'municipio_id'  => (int) $row['municipio_id'],
+                'seccion'       => (int) $row['seccion'],
+                'vigencia'      => (int) $row['vigencia'],
+                'clave_elector' => $this->crypto->decrypt((string) $row['clave_elector_enc']),
+                'curp'          => $this->crypto->decrypt($row['curp_enc'] !== null ? (string) $row['curp_enc'] : null),
+                'telefono'      => (string) $row['telefono'],
+                'lat'           => (float) $row['lat'],
+                'lng'           => (float) $row['lng'],
+                'validacion'    => (string) $row['validacion'],
+                'observaciones' => $row['observaciones'],
+                'editable'      => ($row['validacion'] ?? 'pendiente') !== 'validado',
+                'created_at'    => $row['created_at'],
             ];
         }
 
@@ -639,15 +584,14 @@ class SyncController extends BaseApiController
             return $this->apiResponse(null, null, ['Este Talento ya fue validado y no puede editarse.'], 422);
         }
 
-        $input             = $this->inputData();
-        $input['uuid']     = $talent['uuid'];
-        $res               = $this->processSingleTalent($input, (int) $activist['id'], null);
+        $input         = $this->inputData();
+        $input['uuid'] = $talent['uuid'];
+        $res           = $this->processSingleTalent($input, (int) $activist['id'], null);
 
         if (($res['http_status'] ?? 200) >= 400) {
             return $this->apiResponse(null, null, [$res['error'] ?? 'Error al actualizar.'], (int) $res['http_status']);
         }
 
-        // Si estaba observado y el activista lo corrigió, regresa a pendiente
         if (($talent['validacion'] ?? '') === 'observado') {
             $this->db->table('talents')
                 ->where('id', (int) $talent['id'])

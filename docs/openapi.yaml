@@ -334,3 +334,4 @@ paths:
       security: []
       responses:
         '200': { description: Opt-out procesado }
+

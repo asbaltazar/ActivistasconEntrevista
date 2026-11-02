@@ -6,10 +6,8 @@ namespace Tests\Unit;
 
 use App\Database\Migrations\CreateRctSchema;
 use App\Database\Seeds\InitialSeeder;
-use App\Libraries\Sms\TwilioSmsProvider;
 use App\Services\CryptoService;
 use App\Services\IneOcrService;
-use App\Services\OtpService;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Database;
 
@@ -86,19 +84,7 @@ TEXT;
         $this->assertGreaterThanOrEqual(11, $filledCount);
     }
 
-    public function testTwilioGsm7Sanitization(): void
-    {
-        $raw   = '¡Hola María José! Tu sección 4812 está registrada en Red Ciudadana de Innovación.';
-        $clean = TwilioSmsProvider::sanitizeGsm7($raw, 160);
-
-        $this->assertStringNotContainsString('á', $clean);
-        $this->assertStringNotContainsString('é', $clean);
-        $this->assertStringNotContainsString('ó', $clean);
-        $this->assertStringNotContainsString('¡', $clean);
-        $this->assertLessThanOrEqual(160, strlen($clean));
-    }
-
-    public function testDatabaseSchemaSeedOtpIdempotentSyncAndTwentyOfflineTalents(): void
+    public function testDatabaseSchemaSeedDirectActivistAndTwentyOfflineTalents(): void
     {
         require_once APPPATH . 'Database/Migrations/2026-11-02-000001_CreateRctSchema.php';
         $db        = Database::connect();
@@ -112,10 +98,10 @@ TEXT;
         $estadosCount = $db->table('cat_estados')->countAllResults();
         $this->assertSame(32, $estadosCount);
 
-        // 2. Ciclo de verificación OTP de Activista (RF-P1.1)
+        // 2. Alta directa de Activista en estado activo (sin requerir OTP Twilio)
         $now = date('Y-m-d H:i:s');
         $db->table('users')->insert([
-            'username'             => 'act_test_otp',
+            'username'             => 'act_test_direct',
             'password_hash'        => password_hash('Secret123!', PASSWORD_DEFAULT),
             'role'                 => 'activista',
             'status'               => 'activo',
@@ -125,31 +111,21 @@ TEXT;
         $userId = (int) $db->insertID();
 
         $db->table('activists')->insert([
-            'user_id'    => $userId,
-            'nombre'     => 'Pedro',
-            'ap_paterno' => 'Ramírez',
-            'telefono'   => '5598765432',
-            'estado_id'  => 9,
-            'meta'       => 50,
-            'status'     => 'pendiente_verificacion',
-            'created_at' => $now,
+            'user_id'                => $userId,
+            'nombre'                 => 'Pedro',
+            'ap_paterno'             => 'Ramírez',
+            'telefono'               => '5598765432',
+            'telefono_verificado_at' => $now,
+            'estado_id'              => 9,
+            'meta'                   => 50,
+            'status'                 => 'activo',
+            'created_at'             => $now,
         ]);
         $activistId = (int) $db->insertID();
 
-        $otpService = new OtpService();
-        $sendRes    = $otpService->sendOtpForActivist($activistId);
-        $this->assertTrue($sendRes['success']);
-        $code = (string) ($sendRes['data']['demo_code'] ?? '');
-        $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
-
-        // Código incorrecto incrementa intentos
-        $badCheck = $otpService->verifyOtpForActivist($activistId, '000000');
-        $this->assertFalse($badCheck['success']);
-
-        // Código correcto verifica el teléfono y pasa el activista a estado 'activo'
-        $goodCheck = $otpService->verifyOtpForActivist($activistId, $code);
-        $this->assertTrue($goodCheck['success']);
-        $this->assertSame('activo', $goodCheck['data']['status']);
+        $activistRow = $db->table('activists')->where('id', $activistId)->get()->getRowArray();
+        $this->assertNotNull($activistRow);
+        $this->assertSame('activo', $activistRow['status']);
 
         // 3. Simular sincronización de 20 Talentos capturados en modo avión (§13 Criterios de aceptación)
         $crypto = new CryptoService();

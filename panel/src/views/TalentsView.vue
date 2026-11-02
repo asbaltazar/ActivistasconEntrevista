@@ -378,3 +378,4 @@ onMounted(async () => {
   await loadTalents();
 });
 </script>
+

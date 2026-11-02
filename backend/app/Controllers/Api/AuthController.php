@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Controllers\Api;
 
 use App\Services\AuthContext;
-use App\Services\OtpService;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class AuthController extends BaseApiController
@@ -233,56 +232,17 @@ class AuthController extends BaseApiController
         $porcentaje = round(min(100, ($efectivos / $meta) * 100), 1);
 
         return $this->apiResponse([
-            'activist_id'            => $activistId,
-            'status'                 => $activist['status'],
-            'telefono_verificado'    => !empty($activist['telefono_verificado_at']),
-            'meta'                   => (int) $activist['meta'],
-            'fecha_limite'           => $activist['fecha_limite'],
-            'registrados'            => $total,
-            'validados'              => $counts['validado'],
-            'pendientes_validacion'  => $counts['pendiente'],
-            'observados'             => $counts['observado'],
-            'rechazados'             => $counts['rechazado'],
-            'porcentaje'             => $porcentaje,
+            'activist_id'           => $activistId,
+            'status'                => $activist['status'],
+            'meta'                  => (int) $activist['meta'],
+            'fecha_limite'          => $activist['fecha_limite'],
+            'registrados'           => $total,
+            'validados'             => $counts['validado'],
+            'pendientes_validacion' => $counts['pendiente'],
+            'observados'            => $counts['observado'],
+            'rechazados'            => $counts['rechazado'],
+            'porcentaje'            => $porcentaje,
         ]);
-    }
-
-    public function sendVerifyPhone(): ResponseInterface
-    {
-        $activist = $this->currentActivist();
-        if ($activist === null) {
-            return $this->apiResponse(null, null, ['Solo aplica para cuentas de Activista.'], 422);
-        }
-
-        $otpService = new OtpService();
-        $res        = $otpService->sendOtpForActivist((int) $activist['id']);
-
-        if (!$res['success']) {
-            return $this->apiResponse($res['data'], null, [$res['error'] ?? 'Error al enviar OTP.'], $res['status_code']);
-        }
-
-        $this->logAudit('activist.otp_sent_self', 'activists', (int) $activist['id']);
-        return $this->apiResponse($res['data']);
-    }
-
-    public function checkVerifyPhone(): ResponseInterface
-    {
-        $activist = $this->currentActivist();
-        if ($activist === null) {
-            return $this->apiResponse(null, null, ['Solo aplica para cuentas de Activista.'], 422);
-        }
-
-        $input      = $this->inputData();
-        $code       = (string) ($input['code'] ?? '');
-        $otpService = new OtpService();
-        $res        = $otpService->verifyOtpForActivist((int) $activist['id'], $code);
-
-        if (!$res['success']) {
-            return $this->apiResponse($res['data'], null, [$res['error'] ?? 'Código inválido.'], $res['status_code']);
-        }
-
-        $this->logAudit('activist.otp_verified_self', 'activists', (int) $activist['id']);
-        return $this->apiResponse($res['data']);
     }
 
     /**
@@ -304,17 +264,16 @@ class AuthController extends BaseApiController
 
         if ($activist !== null) {
             $payload['activist'] = [
-                'id'                     => (int) $activist['id'],
-                'nombre'                 => (string) $activist['nombre'],
-                'ap_paterno'             => (string) $activist['ap_paterno'],
-                'ap_materno'             => $activist['ap_materno'],
-                'telefono'               => (string) $activist['telefono'],
-                'telefono_verificado_at' => $activist['telefono_verificado_at'],
-                'estado_id'              => (int) $activist['estado_id'],
-                'municipio_id'           => $activist['municipio_id'] !== null ? (int) $activist['municipio_id'] : null,
-                'meta'                   => (int) $activist['meta'],
-                'fecha_limite'           => $activist['fecha_limite'],
-                'status'                 => (string) $activist['status'],
+                'id'           => (int) $activist['id'],
+                'nombre'       => (string) $activist['nombre'],
+                'ap_paterno'   => (string) $activist['ap_paterno'],
+                'ap_materno'   => $activist['ap_materno'],
+                'telefono'     => (string) $activist['telefono'],
+                'estado_id'    => (int) $activist['estado_id'],
+                'municipio_id' => $activist['municipio_id'] !== null ? (int) $activist['municipio_id'] : null,
+                'meta'         => (int) $activist['meta'],
+                'fecha_limite' => $activist['fecha_limite'],
+                'status'       => (string) $activist['status'],
             ];
         }
 

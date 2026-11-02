@@ -104,3 +104,4 @@ class CatalogsController extends BaseApiController
         return $this->apiResponse($result);
     }
 }
+

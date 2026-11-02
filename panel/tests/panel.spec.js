@@ -23,3 +23,4 @@ describe('Panel de Control — Store de Autenticación y Permisos', () => {
     expect(store.canWrite).toBe(false);
   });
 });
+

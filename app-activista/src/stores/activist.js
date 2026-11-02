@@ -44,9 +44,6 @@ export const useActivistStore = defineStore('activistStore', {
   getters: {
     isAuthenticated: (state) => !!state.token && !!state.user,
     mustChangePassword: (state) => !!state.user?.must_change_password,
-    needsPhoneVerification: (state) =>
-      state.user?.activist &&
-      (state.user.activist.status === 'pendiente_verificacion' || !state.user.activist.telefono_verificado_at),
     hasPendingOffline: (state) =>
       state.queueCounts.borrador + state.queueCounts.pendiente + state.queueCounts.enviando + state.queueCounts.error > 0,
   },
@@ -115,22 +112,6 @@ export const useActivistStore = defineStore('activistStore', {
         this.user.must_change_password = false;
         localStorage.setItem('rct_activista_user', JSON.stringify(this.user));
       }
-    },
-
-    async sendPhoneOtp() {
-      const { data: res } = await api.post('/auth/verify-phone');
-      return res.data;
-    },
-
-    async verifyPhoneOtp(code) {
-      const { data: res } = await api.post('/auth/verify-phone/check', { code });
-      if (this.user?.activist) {
-        this.user.activist.status = res.data.status;
-        this.user.activist.telefono_verificado_at = res.data.telefono_verificado_at;
-        localStorage.setItem('rct_activista_user', JSON.stringify(this.user));
-      }
-      await this.fetchProgress();
-      return res.data;
     },
 
     async downloadCatalogsForOffline() {
@@ -225,7 +206,7 @@ export const useActivistStore = defineStore('activistStore', {
       await db.talentsQueue.put(record);
       await this.refreshQueueCounts();
 
-      if (status === 'pendiente' && this.isOnline && !this.needsPhoneVerification) {
+      if (status === 'pendiente' && this.isOnline) {
         this.syncPendingQueue();
       }
       return record;
@@ -235,7 +216,7 @@ export const useActivistStore = defineStore('activistStore', {
      * Procesa la cola de sincronización con backoff exponencial; nunca borra locales hasta confirmación 200/201 (RF-A5).
      */
     async syncPendingQueue() {
-      if (this.syncInProgress || !this.isOnline || !this.token || this.needsPhoneVerification) {
+      if (this.syncInProgress || !this.isOnline || !this.token) {
         return;
       }
 
@@ -310,3 +291,4 @@ export const useActivistStore = defineStore('activistStore', {
     },
   },
 });
+

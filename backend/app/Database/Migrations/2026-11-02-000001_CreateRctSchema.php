@@ -369,3 +369,4 @@ class CreateRctSchema extends Migration
         }
     }
 }
+

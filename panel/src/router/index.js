@@ -7,7 +7,6 @@ import ActivistsView from '@/views/ActivistsView.vue';
 import TalentsView from '@/views/TalentsView.vue';
 import MapView from '@/views/MapView.vue';
 import ReportsView from '@/views/ReportsView.vue';
-import SmsView from '@/views/SmsView.vue';
 import AuditSettingsView from '@/views/AuditSettingsView.vue';
 
 const router = createRouter({
@@ -29,7 +28,6 @@ const router = createRouter({
         { path: 'talentos', name: 'talents', component: TalentsView },
         { path: 'mapa', name: 'map', component: MapView },
         { path: 'reportes', name: 'reports', component: ReportsView },
-        { path: 'sms', name: 'sms', component: SmsView },
         { path: 'auditoria', name: 'audit', component: AuditSettingsView },
       ],
     },

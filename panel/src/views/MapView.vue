@@ -266,3 +266,4 @@ onMounted(async () => {
   await initGoogleMapIfKeyAvailable();
 });
 </script>
+

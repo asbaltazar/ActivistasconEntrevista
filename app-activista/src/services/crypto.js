@@ -64,3 +64,4 @@ export async function hashPin(pin) {
   }
   return `pin:${pin}`;
 }
+

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Sms\TwilioSmsProvider;
-use App\Services\OtpService;
 use CodeIgniter\HTTP\ResponseInterface;
 
 class AdminActivistsController extends BaseApiController
@@ -47,7 +45,6 @@ class AdminActivistsController extends BaseApiController
             ->get()
             ->getResultArray();
 
-        // Conteos de talentos por activista
         $talentStats = [];
         $statRows = $this->db->table('talents')
             ->select('activist_id, COUNT(*) as total, SUM(CASE WHEN validacion = \'validado\' THEN 1 ELSE 0 END) as validados, MAX(created_at) as last_capture_at')
@@ -129,7 +126,6 @@ class AdminActivistsController extends BaseApiController
         $municipioId = !empty($input['municipio_id']) ? (int) $input['municipio_id'] : null;
         $meta        = max(1, (int) ($input['meta'] ?? 50));
         $fechaLimite = !empty($input['fecha_limite']) ? trim((string) $input['fecha_limite']) : date('Y-m-d', strtotime('+30 days'));
-        $sendSmsCred = !empty($input['send_sms']);
 
         if ($nombre === '' || $apPaterno === '') {
             return $this->apiResponse(null, null, ['El nombre y apellido paterno son obligatorios.'], 422);
@@ -169,43 +165,34 @@ class AdminActivistsController extends BaseApiController
         ]);
         $userId = (int) $this->db->insertID();
 
+        // Alta directa en estado 'activo' (sin validación OTP de Twilio por ahora)
         $this->db->table('activists')->insert([
             'user_id'                => $userId,
             'nombre'                 => $nombre,
             'ap_paterno'             => $apPaterno,
             'ap_materno'             => $apMaterno !== '' ? $apMaterno : null,
             'telefono'               => $telefono,
-            'telefono_verificado_at' => null,
+            'telefono_verificado_at' => $now,
             'estado_id'              => $estadoId,
             'municipio_id'           => $municipioId,
             'meta'                   => $meta,
             'fecha_limite'           => $fechaLimite,
-            'status'                 => 'pendiente_verificacion',
+            'status'                 => 'activo',
             'created_at'             => $now,
             'updated_at'             => $now,
         ]);
         $activistId = (int) $this->db->insertID();
 
-        // Disparar código OTP inicial vía Twilio Verify (RF-P1.1)
-        $otpService = new OtpService();
-        $otpResult  = $otpService->sendOtpForActivist($activistId);
-
-        if ($sendSmsCred) {
-            $sms = new TwilioSmsProvider();
-            $sms->sendSms($telefono, "Red Ciudadana: Tu usuario es {$username} y clave temporal {$tempPassword} Ingresa en https://activistas.solytecmx.com");
-        }
-
         $this->logAudit('activist.create', 'activists', $activistId, ['username' => $username, 'telefono' => $telefono, 'meta' => $meta]);
 
         return $this->apiResponse([
-            'id'                => $activistId,
-            'user_id'           => $userId,
-            'username'          => $username,
-            'temporary_password'=> $tempPassword,
-            'telefono'          => $telefono,
-            'status'            => 'pendiente_verificacion',
-            'otp'               => $otpResult['data'] ?? null,
-            'whatsapp_url'      => 'https://wa.me/52' . $telefono . '?text=' . rawurlencode("Hola {$nombre}, tus credenciales de Red Ciudadana son:\nUsuario: {$username}\nContraseña temporal: {$tempPassword}\nApp: https://activistas.solytecmx.com"),
+            'id'                 => $activistId,
+            'user_id'            => $userId,
+            'username'           => $username,
+            'temporary_password' => $tempPassword,
+            'telefono'           => $telefono,
+            'status'             => 'activo',
+            'whatsapp_url'       => 'https://wa.me/52' . $telefono . '?text=' . rawurlencode("Hola {$nombre}, tus credenciales de Red Ciudadana son:\nUsuario: {$username}\nContraseña temporal: {$tempPassword}\nApp: https://activistas.solytecmx.com"),
         ], null, null, 201);
     }
 
@@ -257,24 +244,11 @@ class AdminActivistsController extends BaseApiController
             'updated_at'   => $now,
         ];
 
-        $otpData = null;
-        if ($phoneChanged) {
-            // RF-P1.1: Al cambiar el teléfono, requiere verificación OTP nuevamente
-            $updates['telefono_verificado_at'] = null;
-            $updates['status']                 = 'pendiente_verificacion';
-        }
-
         $this->db->table('activists')->where('id', $id)->update($updates);
 
         if (isset($input['status'])) {
             $userStatus = $input['status'] === 'suspendido' ? 'suspendido' : 'activo';
             $this->db->table('users')->where('id', (int) $activist['user_id'])->update(['status' => $userStatus, 'updated_at' => $now]);
-        }
-
-        if ($phoneChanged) {
-            $otpService = new OtpService();
-            $otpRes     = $otpService->sendOtpForActivist($id);
-            $otpData    = $otpRes['data'] ?? null;
         }
 
         $this->logAudit('activist.update', 'activists', $id, ['phone_changed' => $phoneChanged]);
@@ -283,7 +257,6 @@ class AdminActivistsController extends BaseApiController
             'id'            => $id,
             'phone_changed' => $phoneChanged,
             'status'        => $updates['status'],
-            'otp'           => $otpData,
         ]);
     }
 
@@ -353,12 +326,6 @@ class AdminActivistsController extends BaseApiController
         // Revocar tokens previos
         $this->db->table('auth_tokens')->where('user_id', (int) $user['id'])->update(['revoked_at' => $now]);
 
-        $input = $this->inputData();
-        if (!empty($input['send_sms'])) {
-            $sms = new TwilioSmsProvider();
-            $sms->sendSms((string) $activist['telefono'], "Red Ciudadana: Tu contraseña se restablecio a {$tempPassword} Usuario: {$user['username']}");
-        }
-
         $this->logAudit('activist.reset_password', 'activists', $id);
 
         return $this->apiResponse([
@@ -387,41 +354,5 @@ class AdminActivistsController extends BaseApiController
         $this->logAudit('activist.revoke_devices', 'activists', $id);
 
         return $this->apiResponse(['revoked' => true, 'activist_id' => $id]);
-    }
-
-    public function sendVerifyPhone(int $id): ResponseInterface
-    {
-        if (($deny = $this->requireWriteRole()) !== null) {
-            return $deny;
-        }
-
-        $otpService = new OtpService();
-        $res        = $otpService->sendOtpForActivist($id);
-
-        if (!$res['success']) {
-            return $this->apiResponse($res['data'], null, [$res['error'] ?? 'Error al enviar OTP.'], $res['status_code']);
-        }
-
-        $this->logAudit('activist.otp_sent_admin', 'activists', $id);
-        return $this->apiResponse($res['data']);
-    }
-
-    public function checkVerifyPhone(int $id): ResponseInterface
-    {
-        if (($deny = $this->requireWriteRole()) !== null) {
-            return $deny;
-        }
-
-        $input      = $this->inputData();
-        $code       = (string) ($input['code'] ?? '');
-        $otpService = new OtpService();
-        $res        = $otpService->verifyOtpForActivist($id, $code);
-
-        if (!$res['success']) {
-            return $this->apiResponse($res['data'], null, [$res['error'] ?? 'Código inválido.'], $res['status_code']);
-        }
-
-        $this->logAudit('activist.otp_verified_admin', 'activists', $id);
-        return $this->apiResponse($res['data']);
     }
 }

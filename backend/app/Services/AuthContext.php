@@ -53,3 +53,4 @@ class AuthContext
         self::$tokenHash = null;
     }
 }
+

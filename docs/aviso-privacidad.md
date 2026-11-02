@@ -55,3 +55,4 @@ Usted tiene derecho a **Acceder** a sus datos personales que poseemos, **Rectifi
 ## 6. Consentimiento Expreso
 
 Al marcar la casilla de aceptación en la aplicación del Activista, permitir la toma de fotografía y/o plasmar mi firma en pantalla, **otorgo mi consentimiento expreso y por escrito** para que mis datos personales, incluidos los datos sensibles y biométricos descritos, sean tratados conforme a los términos y condiciones del presente Aviso de Privacidad Integral, y **acepto expresamente recibir mensajes SMS** de confirmación e información ciudadana en el número celular proporcionado.
+

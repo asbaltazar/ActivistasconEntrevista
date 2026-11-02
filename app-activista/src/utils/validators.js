@@ -57,3 +57,4 @@ export function isVigenciaExpired(vigenciaYear, currentYear = new Date().getFull
   const y = Number(vigenciaYear);
   return y > 0 && y < currentYear;
 }
+

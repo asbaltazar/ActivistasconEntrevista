@@ -40,10 +40,11 @@ router.beforeEach((to) => {
   if (to.meta.requiresAuth && !store.isAuthenticated) {
     return { name: 'login' };
   }
-  if (to.meta.guest && store.isAuthenticated && !store.mustChangePassword && !store.needsPhoneVerification) {
+  if (to.meta.guest && store.isAuthenticated && !store.mustChangePassword) {
     return { name: 'dashboard' };
   }
   return true;
 });
 
 export default router;
+

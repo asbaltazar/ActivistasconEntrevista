@@ -132,3 +132,4 @@ class AuthFilter implements FilterInterface
             ]);
     }
 }
+

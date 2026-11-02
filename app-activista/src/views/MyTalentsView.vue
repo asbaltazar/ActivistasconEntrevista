@@ -137,3 +137,4 @@ async function loadTalents() {
 
 onMounted(loadTalents);
 </script>
+
