@@ -1,0 +1,17 @@
+parameters:
+    level: 6
+    treatPhpDocTypesAsCertain: false
+    paths:
+        - app
+    excludePaths:
+        - app/Views/*
+        - app/Config/Events.php
+        - app/Config/Logger.php
+        - app/Config/Security.php
+    scanDirectories:
+        - vendor/codeigniter4/framework/system/Helpers
+    bootstrapFiles:
+        - vendor/codeigniter4/framework/system/Test/bootstrap.php
+    universalObjectCratesClasses:
+        - CodeIgniter\Entity\Entity
+        - stdClass

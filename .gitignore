@@ -1,0 +1,40 @@
+# Entornos y secretos (NUNCA versionar)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+
+# Backend (CodeIgniter 4)
+/backend/vendor/
+/backend/writable/cache/*
+!/backend/writable/cache/index.html
+/backend/writable/logs/*
+!/backend/writable/logs/index.html
+/backend/writable/session/*
+!/backend/writable/session/index.html
+/backend/writable/uploads/*
+!/backend/writable/uploads/.gitkeep
+/backend/writable/exports/*
+!/backend/writable/exports/.gitkeep
+/backend/writable/debugbar/*
+!/backend/writable/debugbar/index.html
+/backend/build/
+/backend/.phpunit.result.cache
+
+# Frontend (PWA y Panel)
+node_modules/
+dist/
+dev-dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

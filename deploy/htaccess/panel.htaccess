@@ -1,0 +1,11 @@
+# .htaccess en public_html/panel/ (Panel de Control — https://activistas.solytecmx.com/panel/)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /panel/
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule . /panel/index.html [L]
+</IfModule>

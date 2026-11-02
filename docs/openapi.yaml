@@ -1,0 +1,336 @@
+openapi: 3.0.3
+info:
+  title: API Red Ciudadana de Talentos
+  version: 1.2.0
+  description: >
+    API RESTful en CodeIgniter 4 para la App Activista (PWA offline-first) y el Panel de Control.
+    Todas las respuestas siguen el sobre estándar `{ "data": ..., "meta": ..., "errors": ... }`.
+servers:
+  - url: https://activistas.solytecmx.com/api/v1
+    description: Producción (Hostinger)
+  - url: http://localhost:8080/api/v1
+    description: Desarrollo local
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+  schemas:
+    StandardResponse:
+      type: object
+      properties:
+        data:
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+        errors:
+          type: array
+          items:
+            type: string
+          nullable: true
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Iniciar sesión (Activista o Administrador)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                device_uuid: { type: string }
+      responses:
+        '200':
+          description: Token Bearer de 30 días y perfil del usuario
+  /auth/logout:
+    post:
+      summary: Cerrar sesión y revocar token actual
+      responses:
+        '200':
+          description: Sesión cerrada
+  /auth/password:
+    post:
+      summary: Cambiar contraseña (obligatorio en primer acceso)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: Contraseña actualizada
+  /auth/verify-phone:
+    post:
+      summary: Enviar código OTP de 6 dígitos al teléfono del Activista autenticado
+      responses:
+        '200':
+          description: OTP enviado vía Twilio Verify
+  /auth/verify-phone/check:
+    post:
+      summary: Verificar código OTP de 6 dígitos del Activista autenticado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Teléfono verificado; activista pasa a estado activo
+  /me:
+    get:
+      summary: Perfil del usuario autenticado
+      responses:
+        '200':
+          description: Datos del usuario y activista asociado
+  /me/progress:
+    get:
+      summary: Avance de meta del activista autenticado
+      responses:
+        '200':
+          description: Meta, registrados, validados, observados, rechazados y porcentaje
+  /catalogs:
+    get:
+      summary: Catálogos de estados, municipios, localidades, secciones y CPs para modo offline
+      parameters:
+        - in: query
+          name: scope
+          schema: { type: string, default: zona }
+        - in: query
+          name: estado_id
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Catálogos descargables para IndexedDB
+  /ocr/ine:
+    post:
+      summary: Extraer campos de credencial INE mediante Google Cloud Vision + Parser INE
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                frente: { type: string, format: binary }
+                reverso: { type: string, format: binary }
+      responses:
+        '200':
+          description: Campos extraídos con nivel de confianza por campo
+  /geocode:
+    post:
+      summary: Geocodificación de domicilio con caché en BD y restricción MX
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address: { type: string }
+                codigo_postal: { type: string }
+                estado: { type: string }
+                municipio: { type: string }
+      responses:
+        '200':
+          description: Coordenadas lat/lng y precisión
+  /sync/talents:
+    post:
+      summary: Alta o actualización idempotente de Talentos por UUID v7 (individual o lote)
+      responses:
+        '200':
+          description: Resultado por cada registro enviado
+        '201':
+          description: Talento creado
+        '409':
+          description: Duplicado detectado por clave de elector
+  /talents/{uuid}/files:
+    post:
+      summary: Subida de imágenes del Talento (ine_frente, ine_reverso, selfie, firma)
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema: { type: string }
+      responses:
+        '201':
+          description: Archivos almacenados fuera de public_html
+  /admin/activists:
+    get:
+      summary: Listar activistas con filtros y avance de meta
+      responses:
+        '200': { description: Lista paginada de activistas }
+    post:
+      summary: Crear activista, usuario con contraseña temporal y disparar OTP
+      responses:
+        '201': { description: Activista creado }
+  /admin/activists/{id}:
+    put:
+      summary: Editar activista
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Activista actualizado }
+    delete:
+      summary: Baja lógica o suspensión de activista
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Activista dado de baja }
+  /admin/activists/{id}/reset-password:
+    post:
+      summary: Restablecer contraseña temporal y revocar sesiones
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Nueva contraseña temporal generada }
+  /admin/activists/{id}/verify-phone:
+    post:
+      summary: Enviar código OTP al teléfono del activista desde el panel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Código enviado }
+  /admin/activists/{id}/verify-phone/check:
+    post:
+      summary: Validar código OTP dictado por el activista en el panel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Teléfono verificado }
+  /admin/talents:
+    get:
+      summary: Listar talentos con filtros avanzados
+      responses:
+        '200': { description: Lista paginada de talentos }
+  /admin/talents/{id}:
+    get:
+      summary: Detalle de talento con archivos y datos desencriptados
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Detalle completo }
+    put:
+      summary: Editar o validar/observar/rechazar talento
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Talento actualizado }
+    delete:
+      summary: Eliminación lógica de talento
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Talento eliminado }
+  /admin/files/{id}:
+    get:
+      summary: Descarga autenticada de imagen de INE/selfie/firma (registrada en auditoría)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Binario de imagen }
+  /admin/dashboard:
+    get:
+      summary: KPIs globales, ranking de activistas, semáforo y alertas de inactividad
+      responses:
+        '200': { description: Métricas del dashboard }
+  /admin/reports/{tipo}:
+    get:
+      summary: Reportes agregados (activista, estado, seccion, cp, fecha, cobertura, vigencias, duplicados)
+      parameters:
+        - in: path
+          name: tipo
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Datos del reporte }
+  /admin/map/points:
+    get:
+      summary: Puntos geográficos para el mapa nacional con filtros y bounding box
+      responses:
+        '200': { description: Arreglo ligero de coordenadas y metadatos }
+  /admin/exports:
+    post:
+      summary: Generar exportación (xlsx, csv, pdf, kml, geojson) y registrar en auditoría
+      responses:
+        '201': { description: Exportación generada }
+  /admin/exports/{id}:
+    get:
+      summary: Descargar archivo de exportación generado
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Archivo descargable }
+  /admin/sms/campaigns:
+    get:
+      summary: Listar campañas de SMS masivos
+      responses:
+        '200': { description: Lista de campañas }
+    post:
+      summary: Crear y enviar campaña de SMS segmentada a Talentos
+      responses:
+        '201': { description: Campaña creada }
+  /admin/audit:
+    get:
+      summary: Consultar bitácora de auditoría paginada
+      responses:
+        '200': { description: Eventos de auditoría }
+  /webhooks/twilio/status:
+    post:
+      summary: Webhook de estado de entrega de Twilio (valida X-Twilio-Signature)
+      security: []
+      responses:
+        '200': { description: Estado actualizado }
+  /webhooks/twilio/inbound:
+    post:
+      summary: Webhook de respuestas entrantes STOP/BAJA de Twilio
+      security: []
+      responses:
+        '200': { description: Opt-out procesado }

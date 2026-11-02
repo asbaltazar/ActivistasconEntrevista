@@ -1,0 +1,13 @@
+# .htaccess en public_html/api/ (CodeIgniter 4 — https://activistas.solytecmx.com/api/v1/...)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /api/
+
+    # Preservar cabecera Authorization (Bearer Token) en Hostinger (FastCGI/LiteSpeed)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php/$1 [L,NC,QSA]
+</IfModule>

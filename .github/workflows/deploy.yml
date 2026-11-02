@@ -1,0 +1,94 @@
+name: CI/CD — Red Ciudadana de Talentos (Hostinger)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-and-build:
+    name: Pruebas, Análisis Estático y Builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: intl, mbstring, gd, curl, mysqlnd, sqlite3, zip, bcmath
+          coverage: none
+
+      - name: Instalar dependencias Composer (Backend)
+        working-directory: ./backend
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Ejecutar PHPStan Nivel 6
+        working-directory: ./backend
+        run: vendor/bin/phpstan analyse --configuration=phpstan.neon --no-progress
+
+      - name: Ejecutar PHPUnit
+        working-directory: ./backend
+        run: |
+          cp .env.example .env
+          php spark key:generate
+          vendor/bin/phpunit
+
+      - name: Configurar Node 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Pruebas y Build — App Activista (PWA)
+        working-directory: ./app-activista
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Pruebas y Build — Panel de Control
+        working-directory: ./panel
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+  deploy-hostinger:
+    name: Despliegue a Hostinger Premium (activistas.solytecmx.com)
+    needs: quality-and-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar PHP 8.2 y Node 20
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Build de Producción
+        run: |
+          cd backend && composer install --no-dev --optimize-autoloader --no-interaction
+          cd ../app-activista && npm ci && npm run build
+          cd ../panel && npm ci && npm run build
+
+      - name: Sincronizar por SSH/Rsync a Hostinger y ejecutar migraciones
+        if: env.HOSTINGER_SSH_HOST != ''
+        env:
+          HOSTINGER_SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          HOSTINGER_SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          HOSTINGER_SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          rsync -az --delete -e "ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no" ./backend/ "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST:~/domains/activistas.solytecmx.com/ci4/"
+          rsync -az -e "ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no" ./app-activista/dist/ "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST:~/domains/activistas.solytecmx.com/public_html/"
+          rsync -az --delete -e "ssh -p $HOSTINGER_SSH_PORT -o StrictHostKeyChecking=no" ./panel/dist/ "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST:~/domains/activistas.solytecmx.com/public_html/panel/"
+          ssh -p "$HOSTINGER_SSH_PORT" -o StrictHostKeyChecking=no "$HOSTINGER_SSH_USER@$HOSTINGER_SSH_HOST" "cd ~/domains/activistas.solytecmx.com/ci4 && php spark migrate --all"
