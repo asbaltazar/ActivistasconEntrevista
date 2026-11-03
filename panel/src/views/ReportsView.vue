@@ -7,11 +7,12 @@
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h3 class="text-sm font-bold text-slate-800">Reportes Analíticos del Padrón</h3>
-            <p class="text-xs text-slate-500">Agrupaciones por territorio, sección electoral, vigencias y duplicados</p>
+            <p class="text-xs text-slate-500">Agrupaciones por clasificación, territorio, sección electoral, vigencias y duplicados</p>
           </div>
           <select v-model="reportType" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold" @change="loadReport">
+            <option value="clasificacion">Por Clasificación (Conector / Experto / Vendedor)</option>
             <option value="activista">Por Activista</option>
-            <option value="territorial">Por Estado y Municipio</option>
+            <option value="territorial">Por Clave de Estado y Municipio</option>
             <option value="seccion">Por Sección Electoral</option>
             <option value="cp">Por Código Postal</option>
             <option value="fecha">Por Fecha de Captura</option>
@@ -146,7 +147,7 @@ import { useAuthStore } from '@/stores/auth';
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
 const auth = useAuthStore();
-const reportType = ref('seccion');
+const reportType = ref('clasificacion');
 const reportRows = ref([]);
 const exportsList = ref([]);
 const exportLoading = ref(false);
@@ -169,7 +170,7 @@ const chartData = computed(() => {
   if (rows.length === 0) return { labels: [], datasets: [] };
 
   const labels = rows.map(
-    (r) => r.seccion || r.estado || r.nombre || r.codigo_postal || r.fecha || r.criterio || 'Item'
+    (r) => r.clasificacion || r.seccion || r.estado || r.nombre || r.codigo_postal || r.fecha || r.criterio || 'Item'
   );
   const values = rows.map(
     (r) => Number(r.total ?? r.registrados ?? r.talentos_registrados ?? r.repeticiones ?? 1)
@@ -230,4 +231,3 @@ onMounted(async () => {
   await loadExports();
 });
 </script>
-

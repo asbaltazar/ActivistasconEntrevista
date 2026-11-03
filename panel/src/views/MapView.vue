@@ -3,10 +3,14 @@
     <!-- Controles y filtros de mapa (RF-P4) -->
     <div class="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap items-center gap-3 text-sm">
-        <select v-model="filters.estado_id" class="px-3 py-2 rounded-lg border border-slate-300" @change="loadMapPoints">
-          <option value="0">Todo México (32 entidades)</option>
-          <option v-for="e in estados" :key="e.id" :value="e.id">{{ e.nombre }}</option>
-        </select>
+        <input
+          v-model="filters.estado_clave"
+          type="text"
+          maxlength="10"
+          placeholder="Clave Estado (ej. 09)"
+          class="px-3 py-2 rounded-lg border border-slate-300 w-44"
+          @keyup.enter="loadMapPoints"
+        />
 
         <input
           v-model="filters.seccion"
@@ -24,11 +28,6 @@
         </select>
 
         <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-          <input v-model="showPolygons" type="checkbox" @change="loadMapPoints" />
-          <span>Capa GeoJSON Secciones INE</span>
-        </label>
-
-        <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
           <input v-model="heatmapMode" type="checkbox" @change="renderVisualMap" />
           <span>Mapa de Calor</span>
         </label>
@@ -36,7 +35,6 @@
 
       <div class="text-xs font-semibold text-slate-600">
         Puntos en vista: <span class="text-emerald-700 font-bold">{{ points.length }}</span>
-        <span v-if="polygons.length" class="ml-2 text-blue-700">· {{ polygons.length }} polígonos INE</span>
       </div>
     </div>
 
@@ -46,7 +44,7 @@
         <!-- Div para Google Maps JS API cuando hay llave de navegador -->
         <div v-show="googleLoaded" ref="mapContainer" class="w-full h-full"></div>
 
-        <!-- Mapa interactivo vectorial de respaldo (MarkerCluster + Heatmap + GeoJSON) cuando no hay VITE_GOOGLE_MAPS_BROWSER_KEY -->
+        <!-- Mapa interactivo vectorial de respaldo (MarkerCluster + Heatmap) cuando no hay VITE_GOOGLE_MAPS_BROWSER_KEY -->
         <div v-if="!googleLoaded" class="w-full h-full flex flex-col justify-between p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 text-white relative">
           <div class="flex items-center justify-between z-10">
             <span class="px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
@@ -58,20 +56,6 @@
           </div>
 
           <svg viewBox="-118 14 32 19" class="w-full h-[410px] border border-slate-700/60 rounded-xl bg-slate-950/60">
-            <!-- Polígonos GeoJSON de secciones -->
-            <g v-if="showPolygons">
-              <circle
-                v-for="poly in polygons"
-                :key="poly.seccion"
-                :cx="poly.geometry?.coordinates?.[0]?.[0]?.[0] || -99.13"
-                :cy="47 - (poly.geometry?.coordinates?.[0]?.[0]?.[1] || 19.43)"
-                r="0.45"
-                fill="rgba(59, 130, 246, 0.25)"
-                stroke="#60a5fa"
-                stroke-width="0.08"
-              />
-            </g>
-
             <!-- Puntos / Clústeres / Heatmap -->
             <g v-for="(cl, idx) in clusters" :key="idx" class="cursor-pointer" @click="selectedCluster = cl">
               <circle
@@ -133,8 +117,8 @@
         <div v-if="selectedCluster" class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-1.5">
           <div class="font-bold text-emerald-900">Detalle de Ubicación ({{ selectedCluster.count }} registros)</div>
           <div v-for="item in selectedCluster.items.slice(0, 5)" :key="item.id" class="border-t border-emerald-200/60 pt-1">
-            <div class="font-semibold text-slate-800">{{ item.nombre }} (Sec. {{ item.seccion }})</div>
-            <div class="text-slate-500">Col. {{ item.colonia }} · CP {{ item.cp }} · {{ item.validacion }}</div>
+            <div class="font-semibold text-slate-800">{{ item.nombre }} ({{ item.clasificacion || 'Conector' }})</div>
+            <div class="text-slate-500">Sec. {{ item.seccion }} · CP {{ item.cp }} · {{ item.validacion }}</div>
           </div>
         </div>
       </div>
@@ -147,13 +131,8 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { Loader } from '@googlemaps/js-api-loader';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
 import api from '@/services/api';
-import { useAuthStore } from '@/stores/auth';
 
-const auth = useAuthStore();
-const estados = ref([]);
 const points = ref([]);
-const polygons = ref([]);
-const showPolygons = ref(true);
 const heatmapMode = ref(false);
 const selectedCluster = ref(null);
 const mapContainer = ref(null);
@@ -165,7 +144,7 @@ let clusterer = null;
 const palette = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 const filters = reactive({
-  estado_id: 0,
+  estado_clave: '',
   seccion: '',
   validacion: '',
 });
@@ -212,14 +191,13 @@ const clusters = computed(() => {
 });
 
 async function loadMapPoints() {
-  const params = { include_polygons: showPolygons.value ? 1 : 0 };
-  if (filters.estado_id > 0) params.estado_id = filters.estado_id;
+  const params = {};
+  if (filters.estado_clave) params.estado_clave = filters.estado_clave;
   if (filters.seccion) params.seccion = filters.seccion;
   if (filters.validacion) params.validacion = filters.validacion;
 
   const { data: res } = await api.get('/admin/map/points', { params });
   points.value = res.data?.points || [];
-  polygons.value = res.data?.polygons || [];
   renderVisualMap();
 }
 
@@ -260,10 +238,7 @@ function renderVisualMap() {
 }
 
 onMounted(async () => {
-  const cats = await auth.fetchCatalogs();
-  estados.value = cats.estados || [];
   await loadMapPoints();
   await initGoogleMapIfKeyAvailable();
 });
 </script>
-

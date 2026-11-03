@@ -10,21 +10,23 @@
           class="px-3 py-2 rounded-lg border border-slate-300 text-sm"
           @keyup.enter="loadTalents"
         />
-        <select v-model="filters.estado_id" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadTalents">
-          <option value="0">Todas las entidades</option>
-          <option v-for="e in estados" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+        <select v-model="filters.clasificacion" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadTalents">
+          <option value="">Todas las clasificaciones</option>
+          <option value="Conector">Conector</option>
+          <option value="Experto">Experto</option>
+          <option value="Vendedor">Vendedor</option>
         </select>
+        <input
+          v-model="filters.estado_clave"
+          type="text"
+          maxlength="10"
+          placeholder="Clave Estado (ej. 09)"
+          class="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+        />
         <input
           v-model="filters.seccion"
           type="number"
           placeholder="Sección (ej. 4812)"
-          class="px-3 py-2 rounded-lg border border-slate-300 text-sm"
-        />
-        <input
-          v-model="filters.codigo_postal"
-          type="text"
-          maxlength="5"
-          placeholder="Código Postal"
           class="px-3 py-2 rounded-lg border border-slate-300 text-sm"
         />
         <select v-model="filters.validacion" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadTalents">
@@ -68,9 +70,9 @@
         <table class="w-full text-left border-collapse text-sm">
           <thead>
             <tr class="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
-              <th class="py-3 px-4">ID / Ciudadano</th>
+              <th class="py-3 px-4">ID / Ciudadano / Clasificación</th>
               <th class="py-3 px-4">Clave Elector / CURP</th>
-              <th class="py-3 px-4">Ubicación / Sección</th>
+              <th class="py-3 px-4">Domicilio y Claves INE</th>
               <th class="py-3 px-4">Teléfono</th>
               <th class="py-3 px-4">Activista</th>
               <th class="py-3 px-4">Validación</th>
@@ -81,7 +83,17 @@
             <tr v-for="t in talents" :key="t.id" class="hover:bg-slate-50">
               <td class="py-3 px-4">
                 <div class="font-bold text-slate-900">#{{ t.id }} · {{ t.nombre_completo }}</div>
-                <div class="text-xs text-slate-400 font-mono">UUID: {{ t.uuid.slice(0, 13) }}...</div>
+                <div class="flex items-center gap-1.5 mt-1">
+                  <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                    {{ t.clasificacion || 'Conector' }}
+                  </span>
+                  <span
+                    v-if="t.tiene_audios_entrevista"
+                    class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold"
+                  >
+                    3 Audios OK
+                  </span>
+                </div>
               </td>
               <td class="py-3 px-4 font-mono text-xs">
                 <div class="font-semibold text-slate-800">{{ t.clave_elector }}</div>
@@ -91,8 +103,10 @@
                 </span>
               </td>
               <td class="py-3 px-4 text-xs">
-                <div class="font-semibold text-slate-800">Sección {{ t.seccion }} · CP {{ t.codigo_postal }}</div>
-                <div class="text-slate-500">{{ t.colonia }}, {{ t.municipio_nombre }}, {{ t.estado_nombre }}</div>
+                <div class="font-semibold text-slate-800">
+                  Sec. {{ t.seccion }} · CP {{ t.codigo_postal }} · Edo {{ t.estado_clave || '-' }} · Mun {{ t.municipio_clave || '-' }} · Loc {{ t.localidad_clave || '-' }}
+                </div>
+                <div class="text-slate-500 truncate max-w-xs">{{ t.domicilio_completo }}</div>
               </td>
               <td class="py-3 px-4 font-mono text-xs text-slate-800">
                 {{ t.telefono }}
@@ -119,7 +133,7 @@
                   class="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-700 text-white text-xs font-semibold cursor-pointer"
                   @click="openDetail(t.id)"
                 >
-                  Ver INE / Validar
+                  Ver Expediente / Audios
                 </button>
                 <button
                   v-if="auth.canWrite"
@@ -140,9 +154,9 @@
       </div>
     </div>
 
-    <!-- Modal Detalle con Visor Autenticado de INE y Selfie -->
+    <!-- Modal Detalle con Visor Autenticado de INE (Frente), Selfie y Reproductores de Entrevista -->
     <div v-if="selectedTalent" class="fixed inset-0 bg-slate-950/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-6 space-y-5 my-8">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl p-6 space-y-5 my-8 max-h-[92vh] overflow-y-auto">
         <div class="flex items-center justify-between border-b border-slate-200 pb-3">
           <div>
             <h3 class="text-lg font-bold text-slate-900">
@@ -160,7 +174,15 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- Datos editables y validación -->
           <div class="space-y-3 text-xs">
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-4 gap-2">
+              <div>
+                <label class="font-semibold text-slate-600">Clasificación</label>
+                <select v-model="selectedTalent.clasificacion" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-semibold">
+                  <option value="Conector">Conector</option>
+                  <option value="Experto">Experto</option>
+                  <option value="Vendedor">Vendedor</option>
+                </select>
+              </div>
               <div>
                 <label class="font-semibold text-slate-600">Nombre</label>
                 <input v-model="selectedTalent.nombre" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
@@ -186,29 +208,55 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-2">
-              <div class="col-span-2">
-                <label class="font-semibold text-slate-600">Calle y Número</label>
-                <input v-model="selectedTalent.calle_numero" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
+            <div>
+              <label class="font-semibold text-slate-600">Domicilio Completo (Como aparece en la credencial INE)</label>
+              <textarea
+                v-model="selectedTalent.domicilio_completo"
+                rows="2"
+                class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5"
+              ></textarea>
+            </div>
+
+            <div class="grid grid-cols-5 gap-2">
+              <div>
+                <label class="font-semibold text-slate-600">CP</label>
+                <input v-model="selectedTalent.codigo_postal" maxlength="5" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-mono" />
               </div>
               <div>
-                <label class="font-semibold text-slate-600">Colonia</label>
-                <input v-model="selectedTalent.colonia" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
+                <label class="font-semibold text-slate-600">Clave Edo.</label>
+                <input v-model="selectedTalent.estado_clave" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-mono" />
+              </div>
+              <div>
+                <label class="font-semibold text-slate-600">Clave Mun.</label>
+                <input v-model="selectedTalent.municipio_clave" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-mono" />
+              </div>
+              <div>
+                <label class="font-semibold text-slate-600">Clave Loc.</label>
+                <input v-model="selectedTalent.localidad_clave" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-mono" />
+              </div>
+              <div>
+                <label class="font-semibold text-slate-600">Sección</label>
+                <input v-model.number="selectedTalent.seccion" type="number" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5 font-mono" />
               </div>
             </div>
 
             <div class="grid grid-cols-4 gap-2">
               <div>
-                <label class="font-semibold text-slate-600">CP</label>
-                <input v-model="selectedTalent.codigo_postal" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
-              </div>
-              <div>
-                <label class="font-semibold text-slate-600">Sección</label>
-                <input v-model.number="selectedTalent.seccion" type="number" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
-              </div>
-              <div>
                 <label class="font-semibold text-slate-600">Vigencia</label>
                 <input v-model.number="selectedTalent.vigencia" type="number" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
+              </div>
+              <div>
+                <label class="font-semibold text-slate-600">Sexo</label>
+                <select v-model="selectedTalent.sexo" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5">
+                  <option value="">--</option>
+                  <option value="H">H</option>
+                  <option value="M">M</option>
+                  <option value="X">X</option>
+                </select>
+              </div>
+              <div>
+                <label class="font-semibold text-slate-600">Nacimiento</label>
+                <input v-model="selectedTalent.fecha_nacimiento" type="date" class="w-full px-2.5 py-1.5 rounded border border-slate-300 mt-0.5" />
               </div>
               <div>
                 <label class="font-semibold text-slate-600">Teléfono</label>
@@ -234,31 +282,52 @@
             </div>
           </div>
 
-          <!-- Evidencias fotográficas servidas fuera de public_html -->
-          <div class="space-y-3">
-            <h4 class="text-xs font-bold uppercase text-slate-600">
-              Evidencias Fotográficas Autenticadas (Acceso registrado en Auditoría)
-            </h4>
-            <div v-if="!selectedTalent.files || selectedTalent.files.length === 0" class="p-6 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center text-xs text-slate-400">
-              No hay archivos adjuntos para este registro.
-            </div>
-            <div v-else class="grid grid-cols-2 gap-3">
-              <div
-                v-for="f in selectedTalent.files"
-                :key="f.id"
-                class="p-2 rounded-xl border border-slate-200 bg-slate-50"
-              >
-                <div class="text-[11px] font-bold uppercase text-slate-600 mb-1">{{ f.tipo }}</div>
-                <img
-                  :src="`${f.url}?token=${auth.token}`"
-                  :alt="f.tipo"
-                  class="w-full h-32 object-cover rounded-lg border border-slate-200 bg-slate-900"
-                />
+          <!-- Entrevista en Audio (3 Preguntas) y Evidencias Fotográficas -->
+          <div class="space-y-4">
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <h4 class="text-xs font-bold uppercase text-slate-700">
+                Entrevista al Talento (Audios Almacenados en Base de Datos)
+              </h4>
+
+              <div v-for="qNum in [1, 2, 3]" :key="qNum" class="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
+                <div class="text-xs font-semibold text-slate-800">
+                  {{ qNum }}. {{ selectedTalent[`pregunta_${qNum}_texto`] || `Pregunta${qNum}` }}
+                </div>
+                <audio
+                  v-if="selectedTalent[`audio_pregunta_${qNum}`]"
+                  :src="selectedTalent[`audio_pregunta_${qNum}`]"
+                  controls
+                  class="w-full h-8"
+                ></audio>
+                <div v-else class="text-[11px] text-slate-400 italic">Sin grabación de audio registrada.</div>
               </div>
             </div>
-            <div class="text-[11px] text-slate-500">
-              Coordenadas domicilio: {{ selectedTalent.lat }}, {{ selectedTalent.lng }} ({{ selectedTalent.geocode_precision }}) ·
-              GPS evidencia campo: {{ selectedTalent.captura_lat || 'N/A' }}, {{ selectedTalent.captura_lng || 'N/A' }}
+
+            <div class="space-y-2">
+              <h4 class="text-xs font-bold uppercase text-slate-600">
+                Evidencias Fotográficas Autenticadas (Selfie e INE Frente)
+              </h4>
+              <div v-if="!selectedTalent.files || selectedTalent.files.length === 0" class="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center text-xs text-slate-400">
+                No hay archivos adjuntos para este registro.
+              </div>
+              <div v-else class="grid grid-cols-2 gap-3">
+                <div
+                  v-for="f in selectedTalent.files"
+                  :key="f.id"
+                  class="p-2 rounded-xl border border-slate-200 bg-slate-50"
+                >
+                  <div class="text-[11px] font-bold uppercase text-slate-600 mb-1">{{ f.tipo }}</div>
+                  <img
+                    :src="`${f.url}?token=${auth.token}`"
+                    :alt="f.tipo"
+                    class="w-full h-32 object-cover rounded-lg border border-slate-200 bg-slate-900"
+                  />
+                </div>
+              </div>
+              <div class="text-[11px] text-slate-500">
+                Coordenadas domicilio: {{ selectedTalent.lat }}, {{ selectedTalent.lng }} ({{ selectedTalent.geocode_precision }}) ·
+                GPS evidencia campo: {{ selectedTalent.captura_lat || 'N/A' }}, {{ selectedTalent.captura_lng || 'N/A' }}
+              </div>
             </div>
           </div>
         </div>
@@ -320,7 +389,6 @@ import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const talents = ref([]);
-const estados = ref([]);
 const meta = reactive({ page: 1, per_page: 25, total: 0 });
 const selectedTalent = ref(null);
 const showMergeModal = ref(false);
@@ -328,9 +396,9 @@ const mergeForm = reactive({ primary_id: null, secondary_id: null });
 
 const filters = reactive({
   q: '',
-  estado_id: 0,
+  clasificacion: '',
+  estado_clave: '',
   seccion: '',
-  codigo_postal: '',
   validacion: '',
   vigencia_vencida: false,
 });
@@ -338,9 +406,9 @@ const filters = reactive({
 async function loadTalents() {
   const params = {};
   if (filters.q) params.q = filters.q;
-  if (filters.estado_id > 0) params.estado_id = filters.estado_id;
+  if (filters.clasificacion) params.clasificacion = filters.clasificacion;
+  if (filters.estado_clave) params.estado_clave = filters.estado_clave;
   if (filters.seccion) params.seccion = filters.seccion;
-  if (filters.codigo_postal) params.codigo_postal = filters.codigo_postal;
   if (filters.validacion) params.validacion = filters.validacion;
   if (filters.vigencia_vencida) params.vigencia_vencida = 1;
 
@@ -373,9 +441,6 @@ async function submitMerge() {
 }
 
 onMounted(async () => {
-  const cats = await auth.fetchCatalogs();
-  estados.value = cats.estados || [];
   await loadTalents();
 });
 </script>
-

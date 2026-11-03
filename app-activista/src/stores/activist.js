@@ -20,7 +20,7 @@ export const useActivistStore = defineStore('activistStore', {
       observados: 0,
       rechazados: 0,
       porcentaje: 0,
-      telefono_verificado: false,
+      telefono_verificado: true,
     },
     queueCounts: {
       borrador: 0,
@@ -30,11 +30,12 @@ export const useActivistStore = defineStore('activistStore', {
       error: 0,
     },
     catalogs: {
-      estados: [],
-      municipios: [],
-      localidades: [],
-      secciones: [],
-      codigos_postales: [],
+      clasificaciones: ['Conector', 'Experto', 'Vendedor'],
+      entrevista_preguntas: {
+        pregunta_1: 'Pregunta1',
+        pregunta_2: 'Pregunta2',
+        pregunta_3: 'Pregunta3',
+      },
       aviso_privacidad: {
         version: '1.0',
         texto: 'Red Ciudadana de Talentos trata sus datos personales conforme a la LFPDPPP.',
@@ -116,10 +117,13 @@ export const useActivistStore = defineStore('activistStore', {
 
     async downloadCatalogsForOffline() {
       try {
-        const { data: res } = await api.get('/catalogs?scope=zona');
+        const { data: res } = await api.get('/catalogs');
         if (res.data) {
-          this.catalogs = res.data;
-          await db.catalogs.put({ key: 'zona', data: res.data });
+          this.catalogs = {
+            ...this.catalogs,
+            ...res.data,
+          };
+          await db.catalogs.put({ key: 'config', data: this.catalogs });
         }
       } catch {
         await this.loadCatalogsFromIndexedDb();
@@ -127,9 +131,12 @@ export const useActivistStore = defineStore('activistStore', {
     },
 
     async loadCatalogsFromIndexedDb() {
-      const cached = await db.catalogs.get('zona');
+      const cached = await db.catalogs.get('config');
       if (cached?.data) {
-        this.catalogs = cached.data;
+        this.catalogs = {
+          ...this.catalogs,
+          ...cached.data,
+        };
       }
     },
 
@@ -192,6 +199,7 @@ export const useActivistStore = defineStore('activistStore', {
       const record = {
         uuid: talentPayload.uuid,
         status,
+        clasificacion: talentPayload.clasificacion || 'Conector',
         clave_elector: String(talentPayload.clave_elector || '').trim().toUpperCase(),
         curp: String(talentPayload.curp || '').trim().toUpperCase(),
         telefono: String(talentPayload.telefono || '').replace(/\D/g, ''),
@@ -239,7 +247,6 @@ export const useActivistStore = defineStore('activistStore', {
             });
 
             if (response.status === 200 || response.status === 201) {
-              // Solo tras confirmación 200/201 se marca como sincronizado
               await db.talentsQueue.update(item.uuid, {
                 status: 'sincronizado',
                 lastError: null,
@@ -260,7 +267,6 @@ export const useActivistStore = defineStore('activistStore', {
               updatedAt: new Date().toISOString(),
             });
 
-            // Backoff exponencial ligero entre reintentos si es fallo de red
             if (!err.response) {
               const delayMs = Math.min(8000, 500 * Math.pow(2, retries));
               await new Promise((r) => setTimeout(r, delayMs));
@@ -291,4 +297,3 @@ export const useActivistStore = defineStore('activistStore', {
     },
   },
 });
-

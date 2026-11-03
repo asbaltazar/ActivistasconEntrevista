@@ -15,10 +15,15 @@
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </select>
-        <select v-model="filters.estado_id" class="px-3 py-2 rounded-lg border border-slate-300 text-sm" @change="loadActivists">
-          <option value="0">Todas las entidades (32)</option>
-          <option v-for="est in estados" :key="est.id" :value="est.id">{{ est.nombre }}</option>
-        </select>
+        <input
+          v-model.number="filters.estado_id"
+          type="number"
+          min="0"
+          max="32"
+          placeholder="Clave Estado (1-32)"
+          class="px-3 py-2 rounded-lg border border-slate-300 text-sm w-44"
+          @keyup.enter="loadActivists"
+        />
         <button
           type="button"
           class="px-3.5 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 cursor-pointer"
@@ -166,17 +171,26 @@
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Entidad de Operación *</label>
-              <select v-model="form.estado_id" required class="w-full px-3 py-2 rounded-lg border border-slate-300">
-                <option v-for="est in estados" :key="est.id" :value="est.id">{{ est.nombre }}</option>
-              </select>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Numérica del Estado (1-32) *</label>
+              <input
+                v-model.number="form.estado_id"
+                type="number"
+                min="1"
+                max="32"
+                required
+                placeholder="Ej. 9"
+                class="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
+              />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Municipio</label>
-              <select v-model="form.municipio_id" class="w-full px-3 py-2 rounded-lg border border-slate-300">
-                <option :value="null">-- Estatal / Todos --</option>
-                <option v-for="mun in filteredMunicipios" :key="mun.id" :value="mun.id">{{ mun.nombre }}</option>
-              </select>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Numérica de Municipio (Opcional)</label>
+              <input
+                v-model.number="form.municipio_id"
+                type="number"
+                min="1"
+                placeholder="Ej. 15"
+                class="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
+              />
             </div>
           </div>
 
@@ -263,14 +277,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import api from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const activists = ref([]);
-const estados = ref([]);
-const municipios = ref([]);
 
 const filters = reactive({
   q: '',
@@ -295,10 +307,6 @@ const form = reactive({
   fecha_limite: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   status: 'activo',
 });
-
-const filteredMunicipios = computed(() =>
-  municipios.value.filter((m) => Number(m.estado_id) === Number(form.estado_id))
-);
 
 async function loadActivists() {
   const params = {};
@@ -380,9 +388,6 @@ function copyCredentials() {
 }
 
 onMounted(async () => {
-  const cats = await auth.fetchCatalogs();
-  estados.value = cats.estados || [];
-  municipios.value = cats.municipios || [];
   await loadActivists();
 });
 </script>

@@ -17,10 +17,8 @@ class AdminActivistsController extends BaseApiController
         $perPage  = min(100, max(10, (int) ($this->request->getGet('per_page') ?? 25)));
 
         $builder = $this->db->table('activists a')
-            ->select('a.*, u.username, u.email, u.last_login_at, u.must_change_password, e.nombre as estado_nombre, m.nombre as municipio_nombre')
+            ->select('a.*, u.username, u.email, u.last_login_at, u.must_change_password')
             ->join('users u', 'u.id = a.user_id', 'left')
-            ->join('cat_estados e', 'e.id = a.estado_id', 'left')
-            ->join('cat_municipios m', 'm.id = a.municipio_id', 'left')
             ->where('a.deleted_at IS NULL');
 
         if ($status !== '') {
@@ -87,9 +85,7 @@ class AdminActivistsController extends BaseApiController
                 'telefono'               => (string) $row['telefono'],
                 'telefono_verificado_at' => $row['telefono_verificado_at'],
                 'estado_id'              => (int) $row['estado_id'],
-                'estado_nombre'          => $row['estado_nombre'] ?? '',
                 'municipio_id'           => $row['municipio_id'] !== null ? (int) $row['municipio_id'] : null,
-                'municipio_nombre'       => $row['municipio_nombre'] ?? '',
                 'meta'                   => (int) $row['meta'],
                 'fecha_limite'           => $row['fecha_limite'],
                 'status'                 => (string) $row['status'],
@@ -165,7 +161,7 @@ class AdminActivistsController extends BaseApiController
         ]);
         $userId = (int) $this->db->insertID();
 
-        // Alta directa en estado 'activo' (sin validación OTP de Twilio por ahora)
+        // Alta directa en estado 'activo'
         $this->db->table('activists')->insert([
             'user_id'                => $userId,
             'nombre'                 => $nombre,

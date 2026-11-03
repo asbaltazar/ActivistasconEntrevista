@@ -1,0 +1,8 @@
+# Bloquear acceso HTTP directo a todo el directorio backend/ (protección de .env, app/, vendor/ y writable/uploads/)
+<IfModule authz_core_module>
+    Require all denied
+</IfModule>
+<IfModule !authz_core_module>
+    Deny from all
+</IfModule>
+

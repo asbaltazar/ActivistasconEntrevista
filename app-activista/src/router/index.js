@@ -32,6 +32,10 @@ const router = createRouter({
       component: MyTalentsView,
       meta: { requiresAuth: true },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
   ],
 });
 

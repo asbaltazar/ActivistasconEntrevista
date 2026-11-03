@@ -11,7 +11,7 @@ $routes->options('(:any)', static function () {
     return service('response')->setStatusCode(204);
 });
 
-$routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], static function (RouteCollection $routes) {
+$registerV1Routes = static function (RouteCollection $routes): void {
     // Autenticación pública
     $routes->post('auth/login', 'AuthController::login');
 
@@ -68,4 +68,7 @@ $routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], static function
         $routes->get('settings', 'AdminReportsController::getSettings');
         $routes->put('settings', 'AdminReportsController::updateSettings');
     });
-});
+};
+
+$routes->group('api/v1', ['namespace' => 'App\Controllers\Api'], $registerV1Routes);
+$routes->group('v1', ['namespace' => 'App\Controllers\Api'], $registerV1Routes);

@@ -6,81 +6,29 @@ namespace App\Database\Migrations;
 
 use CodeIgniter\Database\Migration;
 
+/**
+ * Migración principal del esquema de Red Ciudadana de Talentos.
+ * Compatible con MariaDB 10.5 (sin funciones exclusivas de MySQL 8; coordenadas en DECIMAL(10,7) indexadas).
+ * Sin tablas de catálogos geográficos (cat_cp, cat_estados, cat_municipios, cat_localidades, cat_secciones).
+ */
 class CreateRctSchema extends Migration
 {
     public function up(): void
     {
-        // 1. cat_estados
-        $this->forge->addField([
-            'id'     => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'clave'  => ['type' => 'CHAR', 'constraint' => 2],
-            'nombre' => ['type' => 'VARCHAR', 'constraint' => 100],
-            'abrev'  => ['type' => 'VARCHAR', 'constraint' => 10],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addUniqueKey('clave');
-        $this->forge->createTable('cat_estados', true);
+        /** @var \CodeIgniter\Database\BaseConnection<object, object> $db */
+        $db = $this->db;
 
-        // 2. cat_municipios
-        $this->forge->addField([
-            'id'        => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'estado_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'clave'     => ['type' => 'CHAR', 'constraint' => 3],
-            'nombre'    => ['type' => 'VARCHAR', 'constraint' => 150],
-            'lat'       => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-            'lng'       => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey('estado_id');
-        $this->forge->createTable('cat_municipios', true);
+        // Eliminar tablas de catálogos si existían previamente
+        foreach (['cat_cp', 'cat_secciones', 'cat_localidades', 'cat_municipios', 'cat_estados'] as $oldCatTable) {
+            if ($db->tableExists($oldCatTable)) {
+                $this->forge->dropTable($oldCatTable, true);
+            }
+        }
 
-        // 3. cat_localidades
-        $this->forge->addField([
-            'id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'municipio_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'clave'        => ['type' => 'CHAR', 'constraint' => 4],
-            'nombre'       => ['type' => 'VARCHAR', 'constraint' => 150],
-            'lat'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-            'lng'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey('municipio_id');
-        $this->forge->createTable('cat_localidades', true);
-
-        // 4. cat_secciones
-        $this->forge->addField([
-            'id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'estado_id'    => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'municipio_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'seccion'      => ['type' => 'SMALLINT', 'constraint' => 5, 'unsigned' => true],
-            'tipo'         => ['type' => 'VARCHAR', 'constraint' => 20, 'default' => 'urbana'],
-            'lat'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-            'lng'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-            'geojson'      => ['type' => 'LONGTEXT', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey(['estado_id', 'seccion']);
-        $this->forge->addKey('municipio_id');
-        $this->forge->createTable('cat_secciones', true);
-
-        // 5. cat_cp (SEPOMEX)
-        $this->forge->addField([
-            'id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'codigo_postal'=> ['type' => 'CHAR', 'constraint' => 5],
-            'asentamiento' => ['type' => 'VARCHAR', 'constraint' => 150],
-            'tipo_asenta'  => ['type' => 'VARCHAR', 'constraint' => 60, 'default' => 'Colonia'],
-            'estado_id'    => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'municipio_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'ciudad'       => ['type' => 'VARCHAR', 'constraint' => 120, 'null' => true],
-            'lat'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-            'lng'          => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey('codigo_postal');
-        $this->forge->addKey('municipio_id');
-        $this->forge->createTable('cat_cp', true);
-
-        // 6. users
+        // 1. users
+        if ($db->tableExists('users') && ! $db->fieldExists('password_hash', 'users')) {
+            $this->forge->dropTable('users', true);
+        }
         $this->forge->addField([
             'id'                   => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
             'username'             => ['type' => 'VARCHAR', 'constraint' => 80],
@@ -98,7 +46,7 @@ class CreateRctSchema extends Migration
         $this->forge->addUniqueKey('username');
         $this->forge->createTable('users', true);
 
-        // 7. auth_tokens (Bearer tokens 30 días)
+        // 2. auth_tokens (Bearer tokens 30 días)
         $this->forge->addField([
             'id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
             'user_id'      => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
@@ -115,7 +63,7 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('user_id');
         $this->forge->createTable('auth_tokens', true);
 
-        // 8. activists
+        // 3. activists
         $this->forge->addField([
             'id'                     => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
             'user_id'                => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
@@ -124,11 +72,11 @@ class CreateRctSchema extends Migration
             'ap_materno'             => ['type' => 'VARCHAR', 'constraint' => 100, 'null' => true],
             'telefono'               => ['type' => 'CHAR', 'constraint' => 10],
             'telefono_verificado_at' => ['type' => 'DATETIME', 'null' => true],
-            'estado_id'              => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
+            'estado_id'              => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'default' => 9],
             'municipio_id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'null' => true],
             'meta'                   => ['type' => 'INT', 'constraint' => 11, 'default' => 50],
             'fecha_limite'           => ['type' => 'DATE', 'null' => true],
-            'status'                 => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'pendiente_verificacion'], // pendiente_verificacion, activo, suspendido
+            'status'                 => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'activo'],
             'created_at'             => ['type' => 'DATETIME', 'null' => true],
             'updated_at'             => ['type' => 'DATETIME', 'null' => true],
             'deleted_at'             => ['type' => 'DATETIME', 'null' => true],
@@ -139,53 +87,45 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('estado_id');
         $this->forge->createTable('activists', true);
 
-        // 9. activist_otps (control de intentos, vigencia 10 min y cooldown 60s)
-        $this->forge->addField([
-            'id'          => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'activist_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'telefono'    => ['type' => 'CHAR', 'constraint' => 10],
-            'code_hash'   => ['type' => 'VARCHAR', 'constraint' => 255],
-            'provider_sid'=> ['type' => 'VARCHAR', 'constraint' => 80, 'null' => true],
-            'attempts'    => ['type' => 'TINYINT', 'constraint' => 2, 'default' => 0],
-            'expires_at'  => ['type' => 'DATETIME'],
-            'verified_at' => ['type' => 'DATETIME', 'null' => true],
-            'created_at'  => ['type' => 'DATETIME', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey('activist_id');
-        $this->forge->createTable('activist_otps', true);
-
-        // 10. talents
+        // 4. talents
+        if ($db->tableExists('talents') && ! $db->fieldExists('clasificacion', 'talents')) {
+            $this->forge->dropTable('talents', true);
+        }
         $this->forge->addField([
             'id'                 => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'auto_increment' => true],
             'uuid'               => ['type' => 'CHAR', 'constraint' => 36],
             'activist_id'        => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
+            'clasificacion'      => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'Conector'], // Conector, Experto, Vendedor
+            'pregunta_1_texto'   => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
+            'audio_pregunta_1'   => ['type' => 'LONGTEXT', 'null' => true], // Audio grabado respuesta 1 (Data URI / Base64 en BD)
+            'pregunta_2_texto'   => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
+            'audio_pregunta_2'   => ['type' => 'LONGTEXT', 'null' => true], // Audio grabado respuesta 2 (Data URI / Base64 en BD)
+            'pregunta_3_texto'   => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
+            'audio_pregunta_3'   => ['type' => 'LONGTEXT', 'null' => true], // Audio grabado respuesta 3 (Data URI / Base64 en BD)
             'nombre'             => ['type' => 'VARCHAR', 'constraint' => 100],
             'ap_paterno'         => ['type' => 'VARCHAR', 'constraint' => 100],
             'ap_materno'         => ['type' => 'VARCHAR', 'constraint' => 100, 'null' => true],
-            'calle_numero'       => ['type' => 'TEXT'], // Cifrado en reposo (Encryption CI4)
-            'colonia'            => ['type' => 'VARCHAR', 'constraint' => 150],
-            'codigo_postal'      => ['type' => 'CHAR', 'constraint' => 5],
-            'estado_id'          => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'municipio_id'       => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'localidad_id'       => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'null' => true],
-            'localidad_texto'    => ['type' => 'VARCHAR', 'constraint' => 150, 'null' => true],
-            'seccion'            => ['type' => 'SMALLINT', 'constraint' => 5, 'unsigned' => true],
+            'domicilio_completo' => ['type' => 'TEXT'], // Cifrado en reposo (Domicilio completo como aparece en la credencial)
+            'codigo_postal'      => ['type' => 'CHAR', 'constraint' => 5], // Extraído del domicilio de la credencial
+            'estado_clave'       => ['type' => 'VARCHAR', 'constraint' => 10], // Clave numérica del estado en la INE (ej. 09)
+            'municipio_clave'    => ['type' => 'VARCHAR', 'constraint' => 10], // Clave numérica del municipio en la INE (ej. 001)
+            'localidad_clave'    => ['type' => 'VARCHAR', 'constraint' => 10], // Clave numérica de la localidad en la INE (ej. 0001)
+            'seccion'            => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true], // Clave numérica de la sección
             'vigencia'           => ['type' => 'SMALLINT', 'constraint' => 4, 'unsigned' => true],
             'anio_registro'      => ['type' => 'SMALLINT', 'constraint' => 4, 'unsigned' => true, 'null' => true],
-            'clave_elector_enc'  => ['type' => 'TEXT'],
-            'clave_elector_hash' => ['type' => 'CHAR', 'constraint' => 64],
-            'curp_enc'           => ['type' => 'TEXT', 'null' => true],
-            'curp_hash'          => ['type' => 'CHAR', 'constraint' => 64, 'null' => true],
+            'clave_elector_enc'  => ['type' => 'TEXT'], // Cifrado en reposo
+            'clave_elector_hash' => ['type' => 'CHAR', 'constraint' => 64], // SHA-256 + pepper
+            'curp_enc'           => ['type' => 'TEXT', 'null' => true], // Cifrado en reposo
+            'curp_hash'          => ['type' => 'CHAR', 'constraint' => 64, 'null' => true], // SHA-256 + pepper
             'fecha_nacimiento'   => ['type' => 'DATE', 'null' => true],
-            'sexo'               => ['type' => 'CHAR', 'constraint' => 1, 'null' => true], // H / M
+            'sexo'               => ['type' => 'CHAR', 'constraint' => 1, 'null' => true], // H, M
             'telefono'           => ['type' => 'CHAR', 'constraint' => 10],
             'email'              => ['type' => 'VARCHAR', 'constraint' => 150, 'null' => true],
             'whatsapp'           => ['type' => 'TINYINT', 'constraint' => 1, 'default' => 1],
             'lat'                => ['type' => 'DECIMAL', 'constraint' => '10,7'],
             'lng'                => ['type' => 'DECIMAL', 'constraint' => '10,7'],
-            'geocode_precision'  => ['type' => 'VARCHAR', 'constraint' => 40, 'default' => 'ROOFTOP'],
-            'geocode_source'     => ['type' => 'VARCHAR', 'constraint' => 20, 'default' => 'google'], // google, manual, gps
+            'geocode_precision'  => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'ROOFTOP'],
+            'geocode_source'     => ['type' => 'VARCHAR', 'constraint' => 20, 'default' => 'google'],
             'captura_lat'        => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
             'captura_lng'        => ['type' => 'DECIMAL', 'constraint' => '10,7', 'null' => true],
             'captura_at'         => ['type' => 'DATETIME', 'null' => true],
@@ -201,21 +141,23 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('id', true);
         $this->forge->addUniqueKey('uuid');
         $this->forge->addUniqueKey('clave_elector_hash');
-        $this->forge->addKey(['lat', 'lng']);
-        $this->forge->addKey('seccion');
-        $this->forge->addKey('municipio_id');
-        $this->forge->addKey('activist_id');
         $this->forge->addKey('curp_hash');
         $this->forge->addKey('telefono');
+        $this->forge->addKey('activist_id');
+        $this->forge->addKey('clasificacion');
+        $this->forge->addKey(['estado_clave', 'municipio_clave', 'seccion']);
+        $this->forge->addKey('codigo_postal');
+        $this->forge->addKey('validacion');
+        $this->forge->addKey(['lat', 'lng']);
         $this->forge->createTable('talents', true);
 
-        // 11. talent_files
+        // 5. talent_files
         $this->forge->addField([
-            'id'         => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
+            'id'         => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'auto_increment' => true],
             'talent_id'  => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true],
-            'tipo'       => ['type' => 'VARCHAR', 'constraint' => 20], // selfie, ine_frente, ine_reverso, firma
+            'tipo'       => ['type' => 'VARCHAR', 'constraint' => 20], // selfie, ine_frente, firma
             'path'       => ['type' => 'VARCHAR', 'constraint' => 255],
-            'mime'       => ['type' => 'VARCHAR', 'constraint' => 60],
+            'mime'       => ['type' => 'VARCHAR', 'constraint' => 50],
             'size'       => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
             'sha256'     => ['type' => 'CHAR', 'constraint' => 64],
             'created_at' => ['type' => 'DATETIME', 'null' => true],
@@ -224,88 +166,44 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('talent_id');
         $this->forge->createTable('talent_files', true);
 
-        // 12. devices
+        // 6. devices
         $this->forge->addField([
-            'id'           => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'activist_id'  => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'device_uuid'  => ['type' => 'VARCHAR', 'constraint' => 64],
-            'user_agent'   => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
-            'last_sync_at' => ['type' => 'DATETIME', 'null' => true],
-            'revoked_at'   => ['type' => 'DATETIME', 'null' => true],
-            'created_at'   => ['type' => 'DATETIME', 'null' => true],
+            'id'          => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
+            'activist_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
+            'device_uuid' => ['type' => 'VARCHAR', 'constraint' => 64],
+            'user_agent'  => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
+            'last_sync_at'=> ['type' => 'DATETIME', 'null' => true],
+            'revoked_at'  => ['type' => 'DATETIME', 'null' => true],
+            'created_at'  => ['type' => 'DATETIME', 'null' => true],
         ]);
         $this->forge->addKey('id', true);
-        $this->forge->addKey(['activist_id', 'device_uuid']);
+        $this->forge->addKey('activist_id');
+        $this->forge->addKey('device_uuid');
         $this->forge->createTable('devices', true);
 
-        // 13. sync_log
+        // 7. sync_log
         $this->forge->addField([
             'id'          => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'auto_increment' => true],
             'activist_id' => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
             'device_id'   => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'null' => true],
             'talent_uuid' => ['type' => 'CHAR', 'constraint' => 36],
-            'status'      => ['type' => 'VARCHAR', 'constraint' => 30],
+            'status'      => ['type' => 'VARCHAR', 'constraint' => 20],
             'error'       => ['type' => 'TEXT', 'null' => true],
             'created_at'  => ['type' => 'DATETIME', 'null' => true],
         ]);
         $this->forge->addKey('id', true);
-        $this->forge->addKey('activist_id');
         $this->forge->addKey('talent_uuid');
+        $this->forge->addKey('activist_id');
         $this->forge->createTable('sync_log', true);
 
-        // 14. sms_campaigns
-        $this->forge->addField([
-            'id'         => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
-            'user_id'    => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
-            'nombre'     => ['type' => 'VARCHAR', 'constraint' => 150],
-            'plantilla'  => ['type' => 'VARCHAR', 'constraint' => 300],
-            'filtros'    => ['type' => 'LONGTEXT', 'null' => true], // JSON
-            'total'      => ['type' => 'INT', 'constraint' => 11, 'default' => 0],
-            'enviados'   => ['type' => 'INT', 'constraint' => 11, 'default' => 0],
-            'status'     => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'pendiente'], // pendiente, procesando, completada, error
-            'created_at' => ['type' => 'DATETIME', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->createTable('sms_campaigns', true);
-
-        // 15. sms_messages
-        $this->forge->addField([
-            'id'           => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'auto_increment' => true],
-            'talent_id'    => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'null' => true],
-            'telefono'     => ['type' => 'CHAR', 'constraint' => 10],
-            'plantilla'    => ['type' => 'VARCHAR', 'constraint' => 80, 'default' => 'bienvenida'],
-            'cuerpo'       => ['type' => 'VARCHAR', 'constraint' => 320],
-            'campaign_id'  => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'null' => true],
-            'provider_id'  => ['type' => 'VARCHAR', 'constraint' => 80, 'null' => true],
-            'status'       => ['type' => 'VARCHAR', 'constraint' => 30, 'default' => 'queued'], // queued, sent, delivered, failed, optout
-            'error'        => ['type' => 'TEXT', 'null' => true],
-            'sent_at'      => ['type' => 'DATETIME', 'null' => true],
-            'delivered_at' => ['type' => 'DATETIME', 'null' => true],
-            'created_at'   => ['type' => 'DATETIME', 'null' => true],
-        ]);
-        $this->forge->addKey('id', true);
-        $this->forge->addKey('talent_id');
-        $this->forge->addKey('campaign_id');
-        $this->forge->addKey('provider_id');
-        $this->forge->createTable('sms_messages', true);
-
-        // 16. sms_optouts
-        $this->forge->addField([
-            'telefono'   => ['type' => 'CHAR', 'constraint' => 10],
-            'motivo'     => ['type' => 'VARCHAR', 'constraint' => 50, 'default' => 'BAJA'],
-            'created_at' => ['type' => 'DATETIME', 'null' => true],
-        ]);
-        $this->forge->addKey('telefono', true);
-        $this->forge->createTable('sms_optouts', true);
-
-        // 17. geocode_cache
+        // 8. geocode_cache
         $this->forge->addField([
             'id'                => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
             'query_hash'        => ['type' => 'CHAR', 'constraint' => 64],
             'query_text'        => ['type' => 'VARCHAR', 'constraint' => 255],
             'lat'               => ['type' => 'DECIMAL', 'constraint' => '10,7'],
             'lng'               => ['type' => 'DECIMAL', 'constraint' => '10,7'],
-            'precision_type'    => ['type' => 'VARCHAR', 'constraint' => 40],
+            'precision_type'    => ['type' => 'VARCHAR', 'constraint' => 30],
             'formatted_address' => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
             'created_at'        => ['type' => 'DATETIME', 'null' => true],
         ]);
@@ -313,15 +211,16 @@ class CreateRctSchema extends Migration
         $this->forge->addUniqueKey('query_hash');
         $this->forge->createTable('geocode_cache', true);
 
-        // 18. audit_log
+        // 9. audit_log
         $this->forge->addField([
             'id'         => ['type' => 'BIGINT', 'constraint' => 20, 'unsigned' => true, 'auto_increment' => true],
             'user_id'    => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'null' => true],
             'action'     => ['type' => 'VARCHAR', 'constraint' => 80],
-            'entity'     => ['type' => 'VARCHAR', 'constraint' => 60],
-            'entity_id'  => ['type' => 'VARCHAR', 'constraint' => 60, 'null' => true],
+            'entity'     => ['type' => 'VARCHAR', 'constraint' => 50],
+            'entity_id'  => ['type' => 'VARCHAR', 'constraint' => 64, 'null' => true],
             'payload'    => ['type' => 'LONGTEXT', 'null' => true], // JSON
             'ip'         => ['type' => 'VARCHAR', 'constraint' => 45, 'null' => true],
+            'user_agent' => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
             'created_at' => ['type' => 'DATETIME', 'null' => true],
         ]);
         $this->forge->addKey('id', true);
@@ -329,7 +228,7 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('action');
         $this->forge->createTable('audit_log', true);
 
-        // 19. exports
+        // 10. exports
         $this->forge->addField([
             'id'         => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true, 'auto_increment' => true],
             'user_id'    => ['type' => 'INT', 'constraint' => 11, 'unsigned' => true],
@@ -345,7 +244,10 @@ class CreateRctSchema extends Migration
         $this->forge->addKey('user_id');
         $this->forge->createTable('exports', true);
 
-        // 20. settings
+        // 11. settings
+        if ($db->tableExists('settings') && ! $db->fieldExists('setting_key', 'settings')) {
+            $this->forge->dropTable('settings', true);
+        }
         $this->forge->addField([
             'setting_key'   => ['type' => 'VARCHAR', 'constraint' => 100],
             'setting_value' => ['type' => 'LONGTEXT', 'null' => true],
@@ -358,15 +260,21 @@ class CreateRctSchema extends Migration
     public function down(): void
     {
         $tables = [
-            'settings', 'exports', 'audit_log', 'geocode_cache',
-            'sms_optouts', 'sms_messages', 'sms_campaigns',
-            'sync_log', 'devices', 'talent_files', 'talents',
-            'activist_otps', 'activists', 'auth_tokens', 'users',
-            'cat_cp', 'cat_secciones', 'cat_localidades', 'cat_municipios', 'cat_estados',
+            'settings',
+            'exports',
+            'audit_log',
+            'geocode_cache',
+            'sync_log',
+            'devices',
+            'talent_files',
+            'talents',
+            'activists',
+            'auth_tokens',
+            'users',
         ];
+
         foreach ($tables as $table) {
             $this->forge->dropTable($table, true);
         }
     }
 }
-

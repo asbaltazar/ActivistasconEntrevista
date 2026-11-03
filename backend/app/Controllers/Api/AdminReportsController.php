@@ -50,9 +50,8 @@ class AdminReportsController extends BaseApiController
         }
 
         $activists = $this->db->table('activists a')
-            ->select('a.*, u.username, e.nombre as estado_nombre')
+            ->select('a.*, u.username')
             ->join('users u', 'u.id = a.user_id', 'left')
-            ->join('cat_estados e', 'e.id = a.estado_id', 'left')
             ->where('a.deleted_at IS NULL')
             ->get()
             ->getResultArray();
@@ -71,9 +70,9 @@ class AdminReportsController extends BaseApiController
             ];
         }
 
-        $metaGlobal  = 0;
-        $ranking     = [];
-        $inactivos48 = [];
+        $metaGlobal      = 0;
+        $ranking         = [];
+        $inactivos48     = [];
         $semaforoSummary = ['verde' => 0, 'amarillo' => 0, 'rojo' => 0];
 
         $nowTs = time();
@@ -86,11 +85,10 @@ class AdminReportsController extends BaseApiController
             $lastSync    = $countsByActivist[$actId]['last_sync'] ?? null;
             $porcentaje  = round(min(100, ($registrados / $meta) * 100), 1);
 
-            // Cálculo de ritmo esperado vs tiempo transcurrido hasta fecha_limite
-            $createdTs  = !empty($act['created_at']) ? (int) strtotime((string) $act['created_at']) : ($nowTs - 86400);
-            $deadlineTs = !empty($act['fecha_limite']) ? (int) strtotime((string) $act['fecha_limite'] . ' 23:59:59') : ($nowTs + 86400 * 30);
-            $totalSpan  = max(86400, $deadlineTs - $createdTs);
-            $elapsed    = max(0, min($totalSpan, $nowTs - $createdTs));
+            $createdTs   = !empty($act['created_at']) ? (int) strtotime((string) $act['created_at']) : ($nowTs - 86400);
+            $deadlineTs  = !empty($act['fecha_limite']) ? (int) strtotime((string) $act['fecha_limite'] . ' 23:59:59') : ($nowTs + 86400 * 30);
+            $totalSpan   = max(86400, $deadlineTs - $createdTs);
+            $elapsed     = max(0, min($totalSpan, $nowTs - $createdTs));
             $expectedPct = round(($elapsed / $totalSpan) * 100, 1);
 
             if ($porcentaje >= $expectedPct || $porcentaje >= 80) {
@@ -106,7 +104,7 @@ class AdminReportsController extends BaseApiController
                 'id'              => $actId,
                 'nombre_completo' => trim($act['nombre'] . ' ' . $act['ap_paterno'] . ' ' . ($act['ap_materno'] ?? '')),
                 'username'        => $act['username'],
-                'estado_nombre'   => $act['estado_nombre'] ?? '',
+                'estado_nombre'   => 'Estado ' . str_pad((string) ($act['estado_id'] ?? 9), 2, '0', STR_PAD_LEFT),
                 'status'          => $act['status'],
                 'meta'            => $meta,
                 'registrados'     => $registrados,
@@ -170,13 +168,22 @@ class AdminReportsController extends BaseApiController
         $currentYear = (int) date('Y');
 
         switch ($tipo) {
+            case 'clasificacion':
+                $rows = $this->db->table('talents')
+                    ->select('clasificacion, COUNT(id) as total, SUM(CASE WHEN validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                    ->where('deleted_at IS NULL')
+                    ->groupBy('clasificacion')
+                    ->orderBy('total', 'DESC')
+                    ->get()
+                    ->getResultArray();
+                return $this->apiResponse($rows, ['tipo' => $tipo]);
+
             case 'activista':
                 $rows = $this->db->table('activists a')
-                    ->select('a.id, a.nombre, a.ap_paterno, a.meta, a.status, e.nombre as estado, COUNT(t.id) as registrados, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->join('cat_estados e', 'e.id = a.estado_id', 'left')
+                    ->select('a.id, a.nombre, a.ap_paterno, a.meta, a.status, COUNT(t.id) as registrados, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
                     ->join('talents t', 't.activist_id = a.id AND t.deleted_at IS NULL', 'left')
                     ->where('a.deleted_at IS NULL')
-                    ->groupBy('a.id, a.nombre, a.ap_paterno, a.meta, a.status, e.nombre')
+                    ->groupBy('a.id, a.nombre, a.ap_paterno, a.meta, a.status')
                     ->orderBy('registrados', 'DESC')
                     ->get()
                     ->getResultArray();
@@ -185,23 +192,20 @@ class AdminReportsController extends BaseApiController
             case 'territorial':
             case 'estado':
                 $rows = $this->db->table('talents t')
-                    ->select('e.nombre as estado, m.nombre as municipio, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->join('cat_estados e', 'e.id = t.estado_id', 'left')
-                    ->join('cat_municipios m', 'm.id = t.municipio_id', 'left')
+                    ->select('t.estado_clave, t.municipio_clave, t.localidad_clave, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
                     ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.estado_id, t.municipio_id, e.nombre, m.nombre')
+                    ->groupBy('t.estado_clave, t.municipio_clave, t.localidad_clave')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
                 return $this->apiResponse($rows, ['tipo' => $tipo]);
 
             case 'seccion':
+            case 'cobertura':
                 $rows = $this->db->table('talents t')
-                    ->select('t.seccion, e.nombre as estado, m.nombre as municipio, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->join('cat_estados e', 'e.id = t.estado_id', 'left')
-                    ->join('cat_municipios m', 'm.id = t.municipio_id', 'left')
+                    ->select('t.seccion, t.estado_clave, t.municipio_clave, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
                     ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.seccion, t.estado_id, t.municipio_id, e.nombre, m.nombre')
+                    ->groupBy('t.seccion, t.estado_clave, t.municipio_clave')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
@@ -209,10 +213,9 @@ class AdminReportsController extends BaseApiController
 
             case 'cp':
                 $rows = $this->db->table('talents t')
-                    ->select('t.codigo_postal, t.colonia, e.nombre as estado, COUNT(t.id) as total')
-                    ->join('cat_estados e', 'e.id = t.estado_id', 'left')
+                    ->select('t.codigo_postal, t.estado_clave, COUNT(t.id) as total')
                     ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.codigo_postal, t.colonia, e.nombre')
+                    ->groupBy('t.codigo_postal, t.estado_clave')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
@@ -228,22 +231,9 @@ class AdminReportsController extends BaseApiController
                     ->getResultArray();
                 return $this->apiResponse($rows, ['tipo' => $tipo]);
 
-            case 'cobertura':
-                $rows = $this->db->table('cat_secciones s')
-                    ->select('s.seccion, s.tipo, e.nombre as estado, m.nombre as municipio, COUNT(t.id) as talentos_registrados')
-                    ->join('cat_estados e', 'e.id = s.estado_id', 'left')
-                    ->join('cat_municipios m', 'm.id = s.municipio_id', 'left')
-                    ->join('talents t', 't.seccion = s.seccion AND t.deleted_at IS NULL', 'left')
-                    ->groupBy('s.id, s.seccion, s.tipo, e.nombre, m.nombre')
-                    ->orderBy('talentos_registrados', 'DESC')
-                    ->get()
-                    ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
-
             case 'vigencias':
                 $rows = $this->db->table('talents t')
-                    ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.seccion, t.vigencia, t.telefono, e.nombre as estado')
-                    ->join('cat_estados e', 'e.id = t.estado_id', 'left')
+                    ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.clasificacion, t.seccion, t.vigencia, t.telefono, t.estado_clave')
                     ->where('t.deleted_at IS NULL')
                     ->where('t.vigencia <', $currentYear)
                     ->orderBy('t.vigencia', 'ASC')
@@ -305,20 +295,19 @@ class AdminReportsController extends BaseApiController
     }
 
     /**
-     * GET /api/v1/admin/map/points (RF-P4: Puntos para mapa con MarkerClusterer, Heatmap y polígonos de secciones)
+     * GET /api/v1/admin/map/points (RF-P4: Puntos para mapa)
      */
     public function mapPoints(): ResponseInterface
     {
-        $bbox            = trim((string) ($this->request->getGet('bbox') ?? ''));
-        $activistId      = (int) ($this->request->getGet('activist_id') ?? 0);
-        $estadoId        = (int) ($this->request->getGet('estado_id') ?? 0);
-        $municipioId     = (int) ($this->request->getGet('municipio_id') ?? 0);
-        $seccion         = (int) ($this->request->getGet('seccion') ?? 0);
-        $validacion      = trim((string) ($this->request->getGet('validacion') ?? ''));
-        $includePolygons = (string) ($this->request->getGet('include_polygons') ?? '0') === '1';
+        $bbox          = trim((string) ($this->request->getGet('bbox') ?? ''));
+        $activistId    = (int) ($this->request->getGet('activist_id') ?? 0);
+        $clasificacion = trim((string) ($this->request->getGet('clasificacion') ?? ''));
+        $estadoClave   = trim((string) ($this->request->getGet('estado_clave') ?? ''));
+        $seccion       = (int) ($this->request->getGet('seccion') ?? 0);
+        $validacion    = trim((string) ($this->request->getGet('validacion') ?? ''));
 
         $builder = $this->db->table('talents t')
-            ->select('t.id, t.uuid, t.activist_id, t.nombre, t.ap_paterno, t.seccion, t.colonia, t.codigo_postal, t.lat, t.lng, t.validacion, a.nombre as act_nombre, a.ap_paterno as act_paterno')
+            ->select('t.id, t.uuid, t.activist_id, t.clasificacion, t.nombre, t.ap_paterno, t.seccion, t.codigo_postal, t.estado_clave, t.municipio_clave, t.lat, t.lng, t.validacion, a.nombre as act_nombre, a.ap_paterno as act_paterno')
             ->join('activists a', 'a.id = t.activist_id', 'left')
             ->where('t.deleted_at IS NULL');
 
@@ -336,11 +325,11 @@ class AdminReportsController extends BaseApiController
         if ($activistId > 0) {
             $builder->where('t.activist_id', $activistId);
         }
-        if ($estadoId > 0) {
-            $builder->where('t.estado_id', $estadoId);
+        if ($clasificacion !== '') {
+            $builder->where('t.clasificacion', $clasificacion);
         }
-        if ($municipioId > 0) {
-            $builder->where('t.municipio_id', $municipioId);
+        if ($estadoClave !== '' && $estadoClave !== '0') {
+            $builder->where('t.estado_clave', $estadoClave);
         }
         if ($seccion > 0) {
             $builder->where('t.seccion', $seccion);
@@ -354,38 +343,24 @@ class AdminReportsController extends BaseApiController
 
         foreach ($rows as $r) {
             $points[] = [
-                'id'          => (int) $r['id'],
-                'uuid'        => (string) $r['uuid'],
-                'activist_id' => (int) $r['activist_id'],
-                'activist'    => trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '')),
-                'nombre'      => trim($r['nombre'] . ' ' . $r['ap_paterno']),
-                'seccion'     => (int) $r['seccion'],
-                'colonia'     => (string) $r['colonia'],
-                'cp'          => (string) $r['codigo_postal'],
-                'lat'         => (float) $r['lat'],
-                'lng'         => (float) $r['lng'],
-                'validacion'  => (string) $r['validacion'],
+                'id'            => (int) $r['id'],
+                'uuid'          => (string) $r['uuid'],
+                'activist_id'   => (int) $r['activist_id'],
+                'activist'      => trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '')),
+                'clasificacion' => (string) ($r['clasificacion'] ?? 'Conector'),
+                'nombre'        => trim($r['nombre'] . ' ' . $r['ap_paterno']),
+                'seccion'       => (int) $r['seccion'],
+                'cp'            => (string) $r['codigo_postal'],
+                'estado_clave'  => (string) $r['estado_clave'],
+                'lat'           => (float) $r['lat'],
+                'lng'           => (float) $r['lng'],
+                'validacion'    => (string) $r['validacion'],
             ];
-        }
-
-        $polygons = [];
-        if ($includePolygons) {
-            $secRows = $this->db->table('cat_secciones')
-                ->where('geojson IS NOT NULL')
-                ->get()
-                ->getResultArray();
-            foreach ($secRows as $sr) {
-                $polygons[] = [
-                    'seccion'   => (int) $sr['seccion'],
-                    'estado_id' => (int) $sr['estado_id'],
-                    'geometry'  => json_decode((string) $sr['geojson'], true),
-                ];
-            }
         }
 
         return $this->apiResponse([
             'points'   => $points,
-            'polygons' => $polygons,
+            'polygons' => [],
         ], ['total' => count($points)]);
     }
 
@@ -419,20 +394,18 @@ class AdminReportsController extends BaseApiController
         }
 
         $builder = $this->db->table('talents t')
-            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno, e.nombre as estado_nombre, m.nombre as municipio_nombre')
+            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno')
             ->join('activists a', 'a.id = t.activist_id', 'left')
-            ->join('cat_estados e', 'e.id = t.estado_id', 'left')
-            ->join('cat_municipios m', 'm.id = t.municipio_id', 'left')
             ->where('t.deleted_at IS NULL');
 
         if (!empty($filtros['activist_id'])) {
             $builder->where('t.activist_id', (int) $filtros['activist_id']);
         }
-        if (!empty($filtros['estado_id'])) {
-            $builder->where('t.estado_id', (int) $filtros['estado_id']);
+        if (!empty($filtros['clasificacion'])) {
+            $builder->where('t.clasificacion', (string) $filtros['clasificacion']);
         }
-        if (!empty($filtros['municipio_id'])) {
-            $builder->where('t.municipio_id', (int) $filtros['municipio_id']);
+        if (!empty($filtros['estado_clave'])) {
+            $builder->where('t.estado_clave', (string) $filtros['estado_clave']);
         }
         if (!empty($filtros['seccion'])) {
             $builder->where('t.seccion', (int) $filtros['seccion']);
@@ -530,8 +503,8 @@ class AdminReportsController extends BaseApiController
     private function buildExportFile(string $formato, array $rows, string $fullPath): void
     {
         $headers = [
-            'ID', 'UUID', 'Nombre', 'Apellido Paterno', 'Apellido Materno',
-            'Teléfono', 'Calle y Número', 'Colonia', 'CP', 'Estado', 'Municipio',
+            'ID', 'UUID', 'Clasificación', 'Nombre', 'Apellido Paterno', 'Apellido Materno',
+            'Teléfono', 'Domicilio Completo', 'CP', 'Clave Estado', 'Clave Municipio', 'Clave Localidad',
             'Sección', 'Vigencia', 'Clave de Elector', 'CURP', 'Latitud', 'Longitud',
             'Validación', 'Activista', 'Fecha Registro',
         ];
@@ -541,15 +514,16 @@ class AdminReportsController extends BaseApiController
             $normalized[] = [
                 (int) $r['id'],
                 (string) $r['uuid'],
+                (string) ($r['clasificacion'] ?? 'Conector'),
                 (string) $r['nombre'],
                 (string) $r['ap_paterno'],
                 (string) ($r['ap_materno'] ?? ''),
                 (string) $r['telefono'],
-                (string) ($this->crypto->decrypt((string) $r['calle_numero']) ?? ''),
-                (string) $r['colonia'],
+                (string) ($this->crypto->decrypt((string) $r['domicilio_completo']) ?? ''),
                 (string) $r['codigo_postal'],
-                (string) ($r['estado_nombre'] ?? ''),
-                (string) ($r['municipio_nombre'] ?? ''),
+                (string) $r['estado_clave'],
+                (string) $r['municipio_clave'],
+                (string) $r['localidad_clave'],
                 (int) $r['seccion'],
                 (int) $r['vigencia'],
                 (string) ($this->crypto->decrypt((string) $r['clave_elector_enc']) ?? ''),
@@ -578,7 +552,7 @@ class AdminReportsController extends BaseApiController
         if ($formato === 'csv') {
             $fp = fopen($fullPath, 'wb');
             if ($fp !== false) {
-                fwrite($fp, "\xEF\xBB\xBF"); // UTF-8 BOM para Excel
+                fwrite($fp, "\xEF\xBB\xBF");
                 fputcsv($fp, $headers);
                 foreach ($normalized as $line) {
                     fputcsv($fp, $line);
@@ -597,12 +571,13 @@ class AdminReportsController extends BaseApiController
                 . 'th{background:#f1f5f9;}'
                 . '</style></head><body>'
                 . '<h1>Red Ciudadana de Talentos — Reporte de Padrón (' . count($normalized) . ' registros)</h1>'
-                . '<table><thead><tr><th>ID</th><th>Nombre Completo</th><th>Teléfono</th><th>Estado/Municipio</th><th>Sección</th><th>CP</th><th>Validación</th></tr></thead><tbody>';
+                . '<table><thead><tr><th>ID</th><th>Clasificación</th><th>Nombre Completo</th><th>Teléfono</th><th>Edo/Mun/Loc</th><th>Sección</th><th>CP</th><th>Validación</th></tr></thead><tbody>';
 
             foreach ($rows as $r) {
                 $fullName = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno'] . ' ' . ($r['ap_materno'] ?? '')));
-                $loc      = htmlspecialchars(($r['estado_nombre'] ?? '') . ' / ' . ($r['municipio_nombre'] ?? ''));
-                $html .= "<tr><td>{$r['id']}</td><td>{$fullName}</td><td>{$r['telefono']}</td><td>{$loc}</td><td>{$r['seccion']}</td><td>{$r['codigo_postal']}</td><td>{$r['validacion']}</td></tr>";
+                $loc      = htmlspecialchars("{$r['estado_clave']}/{$r['municipio_clave']}/{$r['localidad_clave']}");
+                $clasif   = htmlspecialchars((string) ($r['clasificacion'] ?? 'Conector'));
+                $html .= "<tr><td>{$r['id']}</td><td>{$clasif}</td><td>{$fullName}</td><td>{$r['telefono']}</td><td>{$loc}</td><td>{$r['seccion']}</td><td>{$r['codigo_postal']}</td><td>{$r['validacion']}</td></tr>";
             }
             $html .= '</tbody></table></body></html>';
 
@@ -626,12 +601,13 @@ class AdminReportsController extends BaseApiController
                         'coordinates' => [(float) $r['lng'], (float) $r['lat']],
                     ],
                     'properties' => [
-                        'id'         => (int) $r['id'],
-                        'uuid'       => (string) $r['uuid'],
-                        'nombre'     => trim($r['nombre'] . ' ' . $r['ap_paterno']),
-                        'seccion'    => (int) $r['seccion'],
-                        'cp'         => (string) $r['codigo_postal'],
-                        'validacion' => (string) $r['validacion'],
+                        'id'            => (int) $r['id'],
+                        'uuid'          => (string) $r['uuid'],
+                        'clasificacion' => (string) ($r['clasificacion'] ?? 'Conector'),
+                        'nombre'        => trim($r['nombre'] . ' ' . $r['ap_paterno']),
+                        'seccion'       => (int) $r['seccion'],
+                        'cp'            => (string) $r['codigo_postal'],
+                        'validacion'    => (string) $r['validacion'],
                     ],
                 ];
             }
@@ -647,7 +623,7 @@ class AdminReportsController extends BaseApiController
                 . '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Red Ciudadana de Talentos</name>';
             foreach ($rows as $r) {
                 $name = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno']));
-                $desc = htmlspecialchars("Sección: {$r['seccion']} | CP: {$r['codigo_postal']} | Estatus: {$r['validacion']}");
+                $desc = htmlspecialchars("Clasificación: {$r['clasificacion']} | Sección: {$r['seccion']} | CP: {$r['codigo_postal']} | Estatus: {$r['validacion']}");
                 $kml .= "<Placemark><name>{$name}</name><description>{$desc}</description><Point><coordinates>{$r['lng']},{$r['lat']},0</coordinates></Point></Placemark>";
             }
             $kml .= '</Document></kml>';

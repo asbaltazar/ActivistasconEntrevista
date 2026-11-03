@@ -31,6 +31,10 @@ const router = createRouter({
         { path: 'auditoria', name: 'audit', component: AuditSettingsView },
       ],
     },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
   ],
 });
 

@@ -103,42 +103,51 @@ class SyncController extends BaseApiController
      */
     private function processSingleTalent(array $item, int $activistId, ?int $deviceId): array
     {
-        $now          = date('Y-m-d H:i:s');
-        $uuid         = strtolower(trim((string) ($item['uuid'] ?? '')));
-        $nombre       = trim((string) ($item['nombre'] ?? ''));
-        $apPaterno    = trim((string) ($item['ap_paterno'] ?? ''));
-        $apMaterno    = trim((string) ($item['ap_materno'] ?? ''));
-        $calleNumero  = trim((string) ($item['calle_numero'] ?? ''));
-        $colonia      = trim((string) ($item['colonia'] ?? ''));
-        $cp           = trim((string) ($item['codigo_postal'] ?? ''));
-        $estadoId     = (int) ($item['estado_id'] ?? 9);
-        $municipioId  = (int) ($item['municipio_id'] ?? 1);
-        $localidadId  = !empty($item['localidad_id']) ? (int) $item['localidad_id'] : null;
-        $localidadTxt = trim((string) ($item['localidad_texto'] ?? ''));
-        $seccion      = (int) ($item['seccion'] ?? 0);
-        $vigencia     = (int) ($item['vigencia'] ?? date('Y'));
-        $anioRegistro = !empty($item['anio_registro']) ? (int) $item['anio_registro'] : null;
-        $claveElector = strtoupper(trim((string) ($item['clave_elector'] ?? '')));
-        $curp         = strtoupper(trim((string) ($item['curp'] ?? '')));
-        $fechaNac     = !empty($item['fecha_nacimiento']) ? trim((string) $item['fecha_nacimiento']) : null;
-        $sexo         = !empty($item['sexo']) ? strtoupper(substr(trim((string) $item['sexo']), 0, 1)) : null;
-        $telefono     = (string) preg_replace('/\D/', '', (string) ($item['telefono'] ?? ''));
-        $email        = !empty($item['email']) ? trim((string) $item['email']) : null;
-        $whatsapp     = isset($item['whatsapp']) ? ((bool) $item['whatsapp'] ? 1 : 0) : 1;
-        $lat          = isset($item['lat']) ? (float) $item['lat'] : 19.4326077;
-        $lng          = isset($item['lng']) ? (float) $item['lng'] : -99.1332080;
-        $geoPrecision = trim((string) ($item['geocode_precision'] ?? 'ROOFTOP'));
-        $geoSource    = trim((string) ($item['geocode_source'] ?? 'google'));
-        $capturaLat   = isset($item['captura_lat']) && $item['captura_lat'] !== '' ? (float) $item['captura_lat'] : null;
-        $capturaLng   = isset($item['captura_lng']) && $item['captura_lng'] !== '' ? (float) $item['captura_lng'] : null;
-        $capturaAt    = !empty($item['captura_at']) ? date('Y-m-d H:i:s', strtotime((string) $item['captura_at'])) : $now;
-        $consentAt    = !empty($item['consentimiento_at']) ? date('Y-m-d H:i:s', strtotime((string) $item['consentimiento_at'])) : $now;
-        $avisoVer     = trim((string) ($item['aviso_version'] ?? '1.0'));
-        $ocrConfianza = isset($item['ocr_confianza'])
+        $now               = date('Y-m-d H:i:s');
+        $uuid              = strtolower(trim((string) ($item['uuid'] ?? '')));
+        $clasificacion     = trim((string) ($item['clasificacion'] ?? 'Conector'));
+        $pregunta1Txt      = trim((string) ($item['pregunta_1_texto'] ?? env('RCT_PREGUNTA_1') ?? 'Pregunta1'));
+        $audioPregunta1    = !empty($item['audio_pregunta_1']) ? (string) $item['audio_pregunta_1'] : null;
+        $pregunta2Txt      = trim((string) ($item['pregunta_2_texto'] ?? env('RCT_PREGUNTA_2') ?? 'Pregunta2'));
+        $audioPregunta2    = !empty($item['audio_pregunta_2']) ? (string) $item['audio_pregunta_2'] : null;
+        $pregunta3Txt      = trim((string) ($item['pregunta_3_texto'] ?? env('RCT_PREGUNTA_3') ?? 'Pregunta3'));
+        $audioPregunta3    = !empty($item['audio_pregunta_3']) ? (string) $item['audio_pregunta_3'] : null;
+        $nombre            = trim((string) ($item['nombre'] ?? ''));
+        $apPaterno         = trim((string) ($item['ap_paterno'] ?? ''));
+        $apMaterno         = trim((string) ($item['ap_materno'] ?? ''));
+        $domicilioCompleto = trim((string) ($item['domicilio_completo'] ?? $item['calle_numero'] ?? ''));
+        $cp                = trim((string) ($item['codigo_postal'] ?? ''));
+        $estadoClave       = trim((string) ($item['estado_clave'] ?? $item['estado_id'] ?? '09'));
+        $municipioClave    = trim((string) ($item['municipio_clave'] ?? $item['municipio_id'] ?? '001'));
+        $localidadClave    = trim((string) ($item['localidad_clave'] ?? $item['localidad_id'] ?? '0001'));
+        $seccion           = (int) ($item['seccion'] ?? 0);
+        $vigencia          = (int) ($item['vigencia'] ?? date('Y'));
+        $anioRegistro      = !empty($item['anio_registro']) ? (int) $item['anio_registro'] : null;
+        $claveElector      = strtoupper(trim((string) ($item['clave_elector'] ?? '')));
+        $curp              = strtoupper(trim((string) ($item['curp'] ?? '')));
+        $fechaNac          = !empty($item['fecha_nacimiento']) ? trim((string) $item['fecha_nacimiento']) : null;
+        $sexo              = !empty($item['sexo']) ? strtoupper(substr(trim((string) $item['sexo']), 0, 1)) : null;
+        $telefono          = (string) preg_replace('/\D/', '', (string) ($item['telefono'] ?? ''));
+        $email             = !empty($item['email']) ? trim((string) $item['email']) : null;
+        $whatsapp          = isset($item['whatsapp']) ? ((bool) $item['whatsapp'] ? 1 : 0) : 1;
+        $lat               = isset($item['lat']) ? (float) $item['lat'] : 19.4326077;
+        $lng               = isset($item['lng']) ? (float) $item['lng'] : -99.1332080;
+        $geoPrecision      = trim((string) ($item['geocode_precision'] ?? 'ROOFTOP'));
+        $geoSource         = trim((string) ($item['geocode_source'] ?? 'google'));
+        $capturaLat        = isset($item['captura_lat']) && $item['captura_lat'] !== '' ? (float) $item['captura_lat'] : null;
+        $capturaLng        = isset($item['captura_lng']) && $item['captura_lng'] !== '' ? (float) $item['captura_lng'] : null;
+        $capturaAt         = !empty($item['captura_at']) ? date('Y-m-d H:i:s', strtotime((string) $item['captura_at'])) : $now;
+        $consentAt         = !empty($item['consentimiento_at']) ? date('Y-m-d H:i:s', strtotime((string) $item['consentimiento_at'])) : $now;
+        $avisoVer          = trim((string) ($item['aviso_version'] ?? '1.0'));
+        $ocrConfianza      = isset($item['ocr_confianza'])
             ? (is_string($item['ocr_confianza']) ? $item['ocr_confianza'] : json_encode($item['ocr_confianza']))
             : null;
 
-        // Validaciones RF-A4
+        if (!in_array($clasificacion, ['Conector', 'Experto', 'Vendedor'], true)) {
+            $clasificacion = 'Conector';
+        }
+
+        // Validaciones
         if ($uuid === '' || strlen($uuid) < 16) {
             return $this->logAndReturnSyncError($activistId, $deviceId, $uuid ?: 'missing-uuid', 'El identificador UUID del cliente es obligatorio.', 422);
         }
@@ -212,16 +221,21 @@ class SyncController extends BaseApiController
         $rowPayload = [
             'uuid'               => $uuid,
             'activist_id'        => $activistId,
+            'clasificacion'      => $clasificacion,
+            'pregunta_1_texto'   => $pregunta1Txt,
+            'audio_pregunta_1'   => $audioPregunta1,
+            'pregunta_2_texto'   => $pregunta2Txt,
+            'audio_pregunta_2'   => $audioPregunta2,
+            'pregunta_3_texto'   => $pregunta3Txt,
+            'audio_pregunta_3'   => $audioPregunta3,
             'nombre'             => $nombre,
             'ap_paterno'         => $apPaterno,
             'ap_materno'         => $apMaterno !== '' ? $apMaterno : null,
-            'calle_numero'       => (string) $this->crypto->encrypt($calleNumero),
-            'colonia'            => $colonia,
+            'domicilio_completo' => (string) $this->crypto->encrypt($domicilioCompleto),
             'codigo_postal'      => $cp,
-            'estado_id'          => $estadoId,
-            'municipio_id'       => $municipioId,
-            'localidad_id'       => $localidadId,
-            'localidad_texto'    => $localidadTxt !== '' ? $localidadTxt : null,
+            'estado_clave'       => $estadoClave,
+            'municipio_clave'    => $municipioClave,
+            'localidad_clave'    => $localidadClave,
             'seccion'            => $seccion,
             'vigencia'           => $vigencia,
             'anio_registro'      => $anioRegistro,
@@ -301,7 +315,11 @@ class SyncController extends BaseApiController
             'created_at'  => $now,
         ]);
 
-        $this->logAudit('talent.sync_create', 'talents', $talentId, ['uuid' => $uuid, 'seccion' => $seccion]);
+        $this->logAudit('talent.sync_create', 'talents', $talentId, [
+            'uuid'          => $uuid,
+            'clasificacion' => $clasificacion,
+            'seccion'       => $seccion,
+        ]);
 
         return [
             'uuid'        => $uuid,
@@ -369,7 +387,7 @@ class SyncController extends BaseApiController
             mkdir($targetDir, 0750, true);
         }
 
-        $validTypes = ['selfie', 'ine_frente', 'ine_reverso', 'firma'];
+        $validTypes = ['selfie', 'ine_frente', 'firma'];
         $savedFiles = [];
         $now        = date('Y-m-d H:i:s');
 
@@ -422,7 +440,7 @@ class SyncController extends BaseApiController
      */
     private function saveBase64FilesForTalent(int $talentId, string $uuid, array $filesMap): array
     {
-        $validTypes = ['selfie', 'ine_frente', 'ine_reverso', 'firma'];
+        $validTypes = ['selfie', 'ine_frente', 'firma'];
         $targetDir  = rtrim(WRITEPATH, '/\\') . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'talents' . DIRECTORY_SEPARATOR . $uuid;
         if (!is_dir($targetDir)) {
             mkdir($targetDir, 0750, true);
@@ -522,7 +540,7 @@ class SyncController extends BaseApiController
                 ->like('nombre', $search)
                 ->orLike('ap_paterno', $search)
                 ->orLike('ap_materno', $search)
-                ->orLike('colonia', $search)
+                ->orLike('clasificacion', $search)
                 ->orLike('telefono', $search)
                 ->groupEnd();
         }
@@ -532,27 +550,28 @@ class SyncController extends BaseApiController
 
         foreach ($rows as $row) {
             $list[] = [
-                'id'            => (int) $row['id'],
-                'uuid'          => (string) $row['uuid'],
-                'nombre'        => (string) $row['nombre'],
-                'ap_paterno'    => (string) $row['ap_paterno'],
-                'ap_materno'    => $row['ap_materno'],
-                'calle_numero'  => $this->crypto->decrypt((string) $row['calle_numero']),
-                'colonia'       => (string) $row['colonia'],
-                'codigo_postal' => (string) $row['codigo_postal'],
-                'estado_id'     => (int) $row['estado_id'],
-                'municipio_id'  => (int) $row['municipio_id'],
-                'seccion'       => (int) $row['seccion'],
-                'vigencia'      => (int) $row['vigencia'],
-                'clave_elector' => $this->crypto->decrypt((string) $row['clave_elector_enc']),
-                'curp'          => $this->crypto->decrypt($row['curp_enc'] !== null ? (string) $row['curp_enc'] : null),
-                'telefono'      => (string) $row['telefono'],
-                'lat'           => (float) $row['lat'],
-                'lng'           => (float) $row['lng'],
-                'validacion'    => (string) $row['validacion'],
-                'observaciones' => $row['observaciones'],
-                'editable'      => ($row['validacion'] ?? 'pendiente') !== 'validado',
-                'created_at'    => $row['created_at'],
+                'id'                 => (int) $row['id'],
+                'uuid'               => (string) $row['uuid'],
+                'clasificacion'      => (string) ($row['clasificacion'] ?? 'Conector'),
+                'nombre'             => (string) $row['nombre'],
+                'ap_paterno'         => (string) $row['ap_paterno'],
+                'ap_materno'         => $row['ap_materno'],
+                'domicilio_completo' => $this->crypto->decrypt((string) $row['domicilio_completo']),
+                'codigo_postal'      => (string) $row['codigo_postal'],
+                'estado_clave'       => (string) $row['estado_clave'],
+                'municipio_clave'    => (string) $row['municipio_clave'],
+                'localidad_clave'    => (string) $row['localidad_clave'],
+                'seccion'            => (int) $row['seccion'],
+                'vigencia'           => (int) $row['vigencia'],
+                'clave_elector'      => $this->crypto->decrypt((string) $row['clave_elector_enc']),
+                'curp'               => $this->crypto->decrypt($row['curp_enc'] !== null ? (string) $row['curp_enc'] : null),
+                'telefono'           => (string) $row['telefono'],
+                'lat'                => (float) $row['lat'],
+                'lng'                => (float) $row['lng'],
+                'validacion'         => (string) $row['validacion'],
+                'observaciones'      => $row['observaciones'],
+                'editable'           => ($row['validacion'] ?? 'pendiente') !== 'validado',
+                'created_at'         => $row['created_at'],
             ];
         }
 

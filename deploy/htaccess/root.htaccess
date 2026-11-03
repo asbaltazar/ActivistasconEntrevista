@@ -7,6 +7,9 @@
     RewriteCond %{HTTPS} !=on
     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+    # Bloquear cualquier acceso web directo a la carpeta privada backend/ (.env, writable/uploads, etc.)
+    RewriteRule ^backend(/.*)?$ - [F,L]
+
     # No interceptar rutas del Panel ni de la API REST
     RewriteRule ^panel(/.*)?$ - [L]
     RewriteRule ^api(/.*)?$ - [L]

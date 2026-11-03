@@ -6,7 +6,7 @@
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Buscar por nombre, sección o teléfono..."
+          placeholder="Buscar por nombre, clasificación, sección o teléfono..."
           class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs"
         />
         <button
@@ -50,8 +50,13 @@
         class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex items-center justify-between gap-3"
       >
         <div class="min-w-0">
-          <div class="font-extrabold text-sm text-slate-900 truncate">{{ item.nombre_completo }}</div>
-          <div class="text-xs text-slate-500 font-mono">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase">
+              {{ item.clasificacion || 'Conector' }}
+            </span>
+            <div class="font-extrabold text-sm text-slate-900 truncate">{{ item.nombre_completo }}</div>
+          </div>
+          <div class="text-xs text-slate-500 font-mono mt-0.5">
             Sección {{ item.seccion }} · Tel: {{ item.telefono }}
           </div>
           <div v-if="item.lastError" class="text-[11px] text-rose-600 font-bold mt-1">
@@ -102,6 +107,7 @@ const filteredList = computed(() => {
     if (!byUuid.has(s.uuid)) {
       byUuid.set(s.uuid, {
         uuid: s.uuid,
+        clasificacion: s.clasificacion || 'Conector',
         nombre_completo: `${s.nombre} ${s.ap_paterno} ${s.ap_materno || ''}`.trim(),
         seccion: s.seccion,
         telefono: s.telefono,
@@ -118,6 +124,7 @@ const filteredList = computed(() => {
   return combined.filter(
     (i) =>
       i.nombre_completo.toLowerCase().includes(q) ||
+      String(i.clasificacion || '').toLowerCase().includes(q) ||
       String(i.seccion).includes(q) ||
       String(i.telefono).includes(q)
   );
@@ -137,4 +144,3 @@ async function loadTalents() {
 
 onMounted(loadTalents);
 </script>
-

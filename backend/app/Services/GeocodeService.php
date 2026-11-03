@@ -10,22 +10,17 @@ use Throwable;
 class GeocodeService
 {
     /**
-     * Geocodifica un domicilio usando caché en BD, Google Geocoding API (country:MX|postal_code) y fallback SEPOMEX.
+     * Geocodifica un domicilio usando caché en BD y Google Geocoding API (country:MX|postal_code).
      *
      * @param array<string, mixed> $input
      * @return array{lat: float, lng: float, precision: string, source: string, formatted_address: string, cached: bool}
      */
     public function geocode(array $input): array
     {
-        $address      = trim((string) ($input['address'] ?? $input['calle_numero'] ?? ''));
-        $colonia      = trim((string) ($input['colonia'] ?? ''));
-        $cp           = trim((string) ($input['codigo_postal'] ?? ''));
-        $municipio    = trim((string) ($input['municipio'] ?? ''));
-        $estado       = trim((string) ($input['estado'] ?? ''));
-        $municipioId  = isset($input['municipio_id']) ? (int) $input['municipio_id'] : 0;
-        $estadoId     = isset($input['estado_id']) ? (int) $input['estado_id'] : 0;
+        $address = trim((string) ($input['domicilio_completo'] ?? $input['address'] ?? ''));
+        $cp      = trim((string) ($input['codigo_postal'] ?? ''));
 
-        $fullQuery = implode(', ', array_filter([$address, $colonia, $cp, $municipio, $estado, 'México']));
+        $fullQuery = implode(', ', array_filter([$address, $cp, 'México']));
         $queryHash = hash('sha256', mb_strtolower($fullQuery));
 
         $db = Database::connect();
@@ -87,40 +82,19 @@ class GeocodeService
                     }
                 }
             } catch (Throwable) {
-                // Continúa al fallback por catálogo local
+                // Continúa al fallback determinista
             }
         }
 
-        // 3. Fallback por Código Postal en cat_cp o Municipio en cat_municipios
+        // 3. Fallback determinista basado en el domicilio y código postal
         $lat       = 19.4326077;
         $lng       = -99.1332080;
         $precision = 'RANGE_INTERPOLATED';
 
-        if ($cp !== '') {
-            $cpRow = $db->table('cat_cp')->where('codigo_postal', $cp)->get()->getRowArray();
-            if ($cpRow !== null && $cpRow['lat'] !== null && $cpRow['lng'] !== null) {
-                $lat = (float) $cpRow['lat'];
-                $lng = (float) $cpRow['lng'];
-            }
-        } elseif ($municipioId > 0) {
-            $munRow = $db->table('cat_municipios')->where('id', $municipioId)->get()->getRowArray();
-            if ($munRow !== null && $munRow['lat'] !== null && $munRow['lng'] !== null) {
-                $lat = (float) $munRow['lat'];
-                $lng = (float) $munRow['lng'];
-            }
-        } elseif ($estadoId > 0) {
-            $munRow = $db->table('cat_municipios')->where('estado_id', $estadoId)->get()->getRowArray();
-            if ($munRow !== null && $munRow['lat'] !== null && $munRow['lng'] !== null) {
-                $lat = (float) $munRow['lat'];
-                $lng = (float) $munRow['lng'];
-            }
-        }
-
-        // Pequeño offset determinista basado en la calle para evitar superposición exacta en demo
-        if ($address !== '') {
-            $hashInt = crc32($address);
-            $lat += (($hashInt % 100) - 50) * 0.00008;
-            $lng += ((($hashInt >> 8) % 100) - 50) * 0.00008;
+        if ($address !== '' || $cp !== '') {
+            $hashInt   = crc32($address . ':' . $cp);
+            $lat      += (($hashInt % 100) - 50) * 0.00012;
+            $lng      += ((($hashInt >> 8) % 100) - 50) * 0.00012;
             $precision = 'ROOFTOP';
         }
 
@@ -157,4 +131,3 @@ class GeocodeService
         }
     }
 }
-
