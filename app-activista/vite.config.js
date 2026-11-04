@@ -12,8 +12,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Red Ciudadana de Talentos — App Activista',
-        short_name: 'Activistas RCT',
+        name: 'Red Municipal de Talentos — App Activista',
+        short_name: 'Activistas RMDT',
         description: 'Registro ciudadano en campo con captura de INE y modo offline-first',
         theme_color: '#047857',
         background_color: '#0f172a',
@@ -52,7 +52,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://127.0.0.1:8081',
         changeOrigin: true,
       },
     },

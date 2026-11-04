@@ -5,7 +5,7 @@
         <div class="w-14 h-14 rounded-2xl bg-emerald-600 text-white font-bold text-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">
           RC
         </div>
-        <h1 class="text-2xl font-bold text-slate-900">Red Ciudadana de Talentos</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Red Municipal de Talentos</h1>
         <p class="text-sm text-slate-500 mt-1">Panel de Administración y Control Territorial</p>
       </div>
 

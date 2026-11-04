@@ -460,34 +460,77 @@
         <h3 class="text-base font-extrabold text-slate-900">8. Ubicación, Revisión y Guardado</h3>
         <button
           type="button"
-          class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold cursor-pointer"
-          @click="geocodeAddress"
+          :disabled="geocodeLoading"
+          class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold cursor-pointer flex items-center gap-1.5"
+          @click="geocodeAddress(true)"
         >
-          Geocodificar Domicilio
+          <i class="pi pi-map-marker" :class="{ 'pi-spin pi-spinner': geocodeLoading }"></i>
+          <span>{{ geocodeLoading ? 'Geocodificando...' : 'Geocodificar Domicilio' }}</span>
         </button>
       </div>
 
-      <!-- Mapa interactivo con pin arrastrable -->
       <div
-        ref="pinPad"
-        class="relative w-full h-44 rounded-2xl bg-slate-900 border-2 border-slate-700 overflow-hidden select-none cursor-crosshair flex items-center justify-center"
-        @pointerdown="startDragPin"
-        @pointermove="moveDragPin"
-        @pointerup="endDragPin"
+        v-if="geocodeStatusMsg"
+        class="p-3 rounded-xl border text-xs font-semibold flex items-start justify-between gap-2"
+        :class="
+          form.geocode_source === 'google'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            : 'bg-amber-50 border-amber-200 text-amber-900'
+        "
       >
-        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px]"></div>
-        <div
-          class="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none"
-          :style="{ left: `${pinPos.x}%`, top: `${pinPos.y}%` }"
-        >
-          <i class="pi pi-map-marker text-3xl text-rose-500 drop-shadow"></i>
-          <span class="px-2 py-0.5 rounded bg-slate-950/90 text-white text-[10px] font-mono">
-            {{ form.lat.toFixed(5) }}, {{ form.lng.toFixed(5) }}
-          </span>
+        <div>
+          <div>{{ geocodeStatusMsg }}</div>
+          <div v-if="formattedAddress" class="text-[11px] font-normal mt-0.5">
+            Dirección localizada: <strong>{{ formattedAddress }}</strong>
+          </div>
+          <div class="text-[11px] font-mono mt-0.5">
+            Lat: {{ form.lat.toFixed(7) }} · Lng: {{ form.lng.toFixed(7) }} ({{ form.geocode_precision }})
+          </div>
         </div>
-        <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[11px] text-slate-300">
-          <span>Arrastra el marcador para ajustar ubicación</span>
-          <span class="font-mono text-emerald-400">{{ form.geocode_precision }}</span>
+        <a
+          :href="`https://www.google.com/maps/search/?api=1&query=${form.lat},${form.lng}`"
+          target="_blank"
+          rel="noopener"
+          class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 text-[11px] font-bold shrink-0 hover:bg-slate-100"
+        >
+          Ver en Google Maps ↗
+        </a>
+      </div>
+
+      <!-- Mapa callejero interactivo con marcador arrastrable -->
+      <div class="rounded-2xl border-2 border-slate-300 overflow-hidden bg-slate-900 shadow-xs">
+        <div
+          v-show="leafletReady"
+          ref="leafletContainer"
+          class="w-full h-64 z-0"
+        ></div>
+
+        <!-- Respaldo offline cuando no hay red para cargar teselas -->
+        <div
+          v-if="!leafletReady"
+          ref="pinPad"
+          class="relative w-full h-52 bg-slate-900 overflow-hidden select-none cursor-crosshair flex items-center justify-center"
+          @pointerdown="startDragPin"
+          @pointermove="moveDragPin"
+          @pointerup="endDragPin"
+        >
+          <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px]"></div>
+          <div
+            class="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none"
+            :style="{ left: `${pinPos.x}%`, top: `${pinPos.y}%` }"
+          >
+            <i class="pi pi-map-marker text-3xl text-rose-500 drop-shadow"></i>
+            <span class="px-2 py-0.5 rounded bg-slate-950/90 text-white text-[10px] font-mono">
+              {{ form.lat.toFixed(5) }}, {{ form.lng.toFixed(5) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="px-3 py-2 bg-slate-900 text-slate-200 text-[11px] flex items-center justify-between border-t border-slate-800">
+          <span>Arrastra el marcador rojo o toca el mapa para ajustar la ubicación exacta</span>
+          <span class="font-mono text-emerald-400">
+            {{ form.lat.toFixed(5) }}, {{ form.lng.toFixed(5) }} ({{ form.geocode_precision }})
+          </span>
         </div>
       </div>
 
@@ -555,7 +598,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import imageCompression from 'browser-image-compression';
 import api from '@/services/api';
@@ -577,6 +620,9 @@ const step = ref(1);
 const stepError = ref('');
 const ocrLoading = ref(false);
 const ocrStatusMsg = ref('');
+const geocodeLoading = ref(false);
+const geocodeStatusMsg = ref('');
+const formattedAddress = ref('');
 const lowConfidenceFields = ref([]);
 const sharpnessScore = ref(null);
 const dupWarnings = ref([]);
@@ -603,7 +649,7 @@ const clasificacionesInfo = [
   {
     value: 'Experto',
     label: 'Experto',
-    desc: 'Especialista técnico, profesional o referente en un área de conocimiento.',
+    desc: 'Especialista técnico, profesional o referente en un área en especial.',
     icon: 'pi-star',
   },
   {
@@ -633,14 +679,14 @@ const form = reactive({
   curp: '',
   domicilio_completo: '',
   codigo_postal: '',
-  estado_clave: '09',
-  municipio_clave: '001',
-  localidad_clave: '0001',
-  seccion: 4812,
-  vigencia: 2030,
-  anio_registro: 2018,
-  sexo: 'M',
-  fecha_nacimiento: '1992-05-15',
+  estado_clave: '',
+  municipio_clave: '',
+  localidad_clave: '',
+  seccion: '',
+  vigencia: '',
+  anio_registro: '',
+  sexo: '',
+  fecha_nacimiento: '',
   telefono: '',
   email: '',
   whatsapp: true,
@@ -844,25 +890,25 @@ async function runIneOcr() {
     const parsed = res.data;
     if (parsed?.fields) {
       Object.assign(form, {
-        nombre: parsed.fields.nombre || form.nombre,
-        ap_paterno: parsed.fields.ap_paterno || form.ap_paterno,
-        ap_materno: parsed.fields.ap_materno || form.ap_materno,
-        clave_elector: parsed.fields.clave_elector || form.clave_elector,
-        curp: parsed.fields.curp || form.curp,
-        domicilio_completo: parsed.fields.domicilio_completo || form.domicilio_completo,
-        codigo_postal: parsed.fields.codigo_postal || form.codigo_postal,
-        estado_clave: parsed.fields.estado_clave || form.estado_clave,
-        municipio_clave: parsed.fields.municipio_clave || form.municipio_clave,
-        localidad_clave: parsed.fields.localidad_clave || form.localidad_clave,
-        seccion: Number(parsed.fields.seccion || form.seccion),
-        vigencia: Number(parsed.fields.vigencia || form.vigencia),
-        anio_registro: Number(parsed.fields.anio_registro || form.anio_registro),
-        fecha_nacimiento: parsed.fields.fecha_nacimiento || form.fecha_nacimiento,
-        sexo: parsed.fields.sexo || form.sexo,
+        nombre: parsed.fields.nombre ?? '',
+        ap_paterno: parsed.fields.ap_paterno ?? '',
+        ap_materno: parsed.fields.ap_materno ?? '',
+        clave_elector: parsed.fields.clave_elector ?? '',
+        curp: parsed.fields.curp ?? '',
+        domicilio_completo: parsed.fields.domicilio_completo ?? '',
+        codigo_postal: parsed.fields.codigo_postal ?? '',
+        estado_clave: parsed.fields.estado_clave ?? '',
+        municipio_clave: parsed.fields.municipio_clave ?? '',
+        localidad_clave: parsed.fields.localidad_clave ?? '',
+        seccion: parsed.fields.seccion ?? '',
+        vigencia: parsed.fields.vigencia ? Number(parsed.fields.vigencia) : '',
+        anio_registro: parsed.fields.anio_registro ? Number(parsed.fields.anio_registro) : '',
+        fecha_nacimiento: parsed.fields.fecha_nacimiento ?? '',
+        sexo: parsed.fields.sexo ?? '',
         ocr_confianza: parsed.confidence || {},
       });
       lowConfidenceFields.value = parsed.low_confidence_fields || [];
-      ocrStatusMsg.value = 'Datos del Frente de la INE extraídos por OCR. Avanza al siguiente paso para revisarlos.';
+      ocrStatusMsg.value = `Datos del Frente de la INE extraídos correctamente (${parsed.provider || 'OCR'}). Avanza al siguiente paso para revisarlos.`;
     }
   } catch {
     ocrStatusMsg.value = 'No fue posible conectar al servicio OCR; puedes llenar los datos manualmente.';
@@ -880,8 +926,148 @@ function fieldClass(fieldName) {
 
 // Pin arrastrable y Geocodificación (Paso 8)
 const pinPad = ref(null);
+const leafletContainer = ref(null);
+const leafletReady = ref(false);
+let leafletMap = null;
+let leafletMarker = null;
+
 const pinPos = reactive({ x: 50, y: 50 });
+const baseCoords = reactive({ lat: 19.4326077, lng: -99.133208 });
 let draggingPin = false;
+
+function ensureLeafletLoaded() {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.L) return Promise.resolve(window.L);
+
+  return new Promise((resolve) => {
+    if (!document.getElementById('leaflet-css-cdn')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css-cdn';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    const existingScript = document.getElementById('leaflet-js-cdn');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve(window.L || null));
+      existingScript.addEventListener('error', () => resolve(null));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'leaflet-js-cdn';
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => resolve(window.L || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
+function destroyLeafletMap() {
+  if (leafletMap) {
+    try {
+      leafletMap.remove();
+    } catch {
+      // ignore
+    }
+    leafletMap = null;
+    leafletMarker = null;
+  }
+}
+
+async function initOrUpdateStep8Map() {
+  if (step.value !== 8 || !store.isOnline) {
+    leafletReady.value = false;
+    return;
+  }
+
+  const L = await ensureLeafletLoaded();
+  if (!L) {
+    leafletReady.value = false;
+    return;
+  }
+
+  leafletReady.value = true;
+  await nextTick();
+
+  if (!leafletContainer.value) return;
+
+  const lat = Number(form.lat) || 19.4326077;
+  const lng = Number(form.lng) || -99.133208;
+
+  if (!leafletMap) {
+    leafletMap = L.map(leafletContainer.value, {
+      center: [lat, lng],
+      zoom: 17,
+      zoomControl: true,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap',
+    }).addTo(leafletMap);
+
+    const redPinIcon = L.divIcon({
+      className: 'rct-custom-pin',
+      html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translate(-14px,-34px);">
+        <svg width="32" height="38" viewBox="0 0 24 24" fill="#e11d48" stroke="#ffffff" stroke-width="2">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
+        </svg>
+      </div>`,
+      iconSize: [32, 38],
+      iconAnchor: [2, 4],
+    });
+
+    leafletMarker = L.marker([lat, lng], {
+      draggable: true,
+      icon: redPinIcon,
+    }).addTo(leafletMap);
+
+    leafletMarker.on('dragend', () => {
+      const pos = leafletMarker.getLatLng();
+      form.lat = Number(pos.lat.toFixed(7));
+      form.lng = Number(pos.lng.toFixed(7));
+      baseCoords.lat = form.lat;
+      baseCoords.lng = form.lng;
+      form.geocode_source = 'manual';
+      geocodeStatusMsg.value = '✓ Ubicación ajustada manualmente arrastrando el marcador en el mapa.';
+    });
+
+    leafletMap.on('click', (e) => {
+      const { lat: cLat, lng: cLng } = e.latlng;
+      leafletMarker.setLatLng([cLat, cLng]);
+      form.lat = Number(cLat.toFixed(7));
+      form.lng = Number(cLng.toFixed(7));
+      baseCoords.lat = form.lat;
+      baseCoords.lng = form.lng;
+      form.geocode_source = 'manual';
+      geocodeStatusMsg.value = '✓ Ubicación ajustada manualmente sobre el mapa.';
+    });
+
+    setTimeout(() => {
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 120);
+  } else {
+    leafletMap.setView([lat, lng], 17);
+    if (leafletMarker) {
+      leafletMarker.setLatLng([lat, lng]);
+    }
+    setTimeout(() => {
+      if (leafletMap) leafletMap.invalidateSize();
+    }, 80);
+  }
+}
+
+watch(step, async (newStep) => {
+  if (newStep === 8) {
+    await nextTick();
+    await initOrUpdateStep8Map();
+  } else {
+    destroyLeafletMap();
+  }
+});
 
 function startDragPin(e) {
   draggingPin = true;
@@ -901,26 +1087,43 @@ function updatePinFromPointer(e) {
   const yPct = Math.max(5, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100));
   pinPos.x = xPct;
   pinPos.y = yPct;
-  form.lng = Number((-99.133208 + (xPct - 50) * 0.0004).toFixed(7));
-  form.lat = Number((19.4326077 - (yPct - 50) * 0.0004).toFixed(7));
+  form.lng = Number((baseCoords.lng + (xPct - 50) * 0.0004).toFixed(7));
+  form.lat = Number((baseCoords.lat - (yPct - 50) * 0.0004).toFixed(7));
   form.geocode_source = 'manual';
 }
 
-async function geocodeAddress() {
-  if (!store.isOnline) return;
+async function geocodeAddress(forceRefresh = false) {
+  if (!store.isOnline) {
+    geocodeStatusMsg.value = 'Modo offline: puedes ajustar el pin manualmente sobre el mapa.';
+    return;
+  }
+  geocodeLoading.value = true;
   try {
     const { data: res } = await api.post('/geocode', {
       domicilio_completo: form.domicilio_completo,
       codigo_postal: form.codigo_postal,
+      force_refresh: forceRefresh ? 1 : 0,
     });
     if (res.data) {
-      form.lat = Number(res.data.lat);
-      form.lng = Number(res.data.lng);
+      baseCoords.lat = Number(res.data.lat);
+      baseCoords.lng = Number(res.data.lng);
+      form.lat = baseCoords.lat;
+      form.lng = baseCoords.lng;
       form.geocode_precision = res.data.precision || 'ROOFTOP';
-      form.geocode_source = 'google';
+      form.geocode_source = res.data.source || 'google';
+      formattedAddress.value = res.data.formatted_address || '';
+      pinPos.x = 50;
+      pinPos.y = 50;
+      geocodeStatusMsg.value =
+        res.data.source === 'google'
+          ? '✓ Domicilio geocodificado correctamente con Google Maps.'
+          : 'Ubicación aproximada calculada. Puedes arrastrar el marcador para afinar.';
+      await initOrUpdateStep8Map();
     }
   } catch {
-    // Mantiene coordenadas actuales
+    geocodeStatusMsg.value = 'No se pudo contactar al servicio de geocodificación; ajusta el pin manualmente.';
+  } finally {
+    geocodeLoading.value = false;
   }
 }
 
@@ -949,9 +1152,15 @@ async function nextStep() {
     return;
   }
 
-  if (step.value === 2 && !['Conector', 'Experto', 'Vendedor'].includes(form.clasificacion)) {
-    stepError.value = 'Selecciona la clasificación del Talento (Conector, Experto o Vendedor).';
-    return;
+  if (step.value === 2) {
+    if (!['Conector', 'Experto', 'Vendedor'].includes(form.clasificacion)) {
+      stepError.value = 'Selecciona la clasificación del Talento (Conector, Experto o Vendedor).';
+      return;
+    }
+    await store.downloadCatalogsForOffline();
+    form.pregunta_1_texto = getQuestionText(1);
+    form.pregunta_2_texto = getQuestionText(2);
+    form.pregunta_3_texto = getQuestionText(3);
   }
 
   if (step.value === 3) {
@@ -995,9 +1204,15 @@ async function nextStep() {
       stepError.value = 'El código postal extraído del domicilio debe tener 5 dígitos.';
       return;
     }
-    if (!form.estado_clave || !form.municipio_clave || !form.localidad_clave) {
-      stepError.value = 'Las claves numéricas de Estado, Municipio y Localidad son obligatorias.';
+    if (!form.estado_clave) {
+      stepError.value = 'La clave numérica del Estado es obligatoria.';
       return;
+    }
+    if (!form.municipio_clave) {
+      form.municipio_clave = '000';
+    }
+    if (!form.localidad_clave) {
+      form.localidad_clave = '0000';
     }
     if (!validateSeccion(form.seccion)) {
       stepError.value = 'La clave numérica de la sección electoral debe tener entre 1 y 4 dígitos.';
@@ -1039,11 +1254,16 @@ async function saveAndEnqueue() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   captureDeviceGps();
+  await store.downloadCatalogsForOffline();
+  form.pregunta_1_texto = getQuestionText(1);
+  form.pregunta_2_texto = getQuestionText(2);
+  form.pregunta_3_texto = getQuestionText(3);
 });
 
 onBeforeUnmount(() => {
   stopAudioRecording();
+  destroyLeafletMap();
 });
 </script>

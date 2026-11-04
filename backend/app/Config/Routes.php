@@ -12,8 +12,11 @@ $routes->options('(:any)', static function () {
 });
 
 $registerV1Routes = static function (RouteCollection $routes): void {
-    // Autenticación pública
+    // Autenticación y catálogos/servicios de apoyo
     $routes->post('auth/login', 'AuthController::login');
+    $routes->get('catalogs', 'CatalogsController::index');
+    $routes->post('ocr/ine', 'CatalogsController::ocrIne');
+    $routes->post('geocode', 'CatalogsController::geocode');
 
     // Rutas autenticadas (Activista y Admin)
     $routes->group('', ['filter' => 'auth'], static function (RouteCollection $routes) {
@@ -24,10 +27,6 @@ $registerV1Routes = static function (RouteCollection $routes): void {
         $routes->get('me/progress', 'AuthController::progress');
         $routes->get('me/talents', 'SyncController::myTalents');
         $routes->put('me/talents/(:segment)', 'SyncController::updateMyTalent/$1');
-
-        $routes->get('catalogs', 'CatalogsController::index');
-        $routes->post('ocr/ine', 'CatalogsController::ocrIne');
-        $routes->post('geocode', 'CatalogsController::geocode');
 
         $routes->post('sync/talents', 'SyncController::syncTalents');
         $routes->post('talents/(:segment)/files', 'SyncController::uploadFiles/$1');

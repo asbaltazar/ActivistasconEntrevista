@@ -190,18 +190,29 @@ class AuthController extends BaseApiController
         $activist = $this->currentActivist();
         if ($activist === null) {
             return $this->apiResponse([
-                'meta'        => 0,
-                'registrados' => 0,
-                'validados'   => 0,
-                'pendientes'  => 0,
-                'observados'  => 0,
-                'rechazados'  => 0,
-                'porcentaje'  => 0.0,
+                'meta'              => 150,
+                'meta_conector'     => 50,
+                'meta_experto'      => 50,
+                'meta_vendedor'     => 50,
+                'registrados'       => 0,
+                'validados'         => 0,
+                'pendientes'        => 0,
+                'observados'        => 0,
+                'rechazados'        => 0,
+                'porcentaje'        => 0.0,
+                'por_clasificacion' => [
+                    'Conector' => ['registrados' => 0, 'meta' => 50, 'porcentaje' => 0.0],
+                    'Experto'  => ['registrados' => 0, 'meta' => 50, 'porcentaje' => 0.0],
+                    'Vendedor' => ['registrados' => 0, 'meta' => 50, 'porcentaje' => 0.0],
+                ],
             ]);
         }
 
-        $activistId = (int) $activist['id'];
-        $meta       = max(1, (int) $activist['meta']);
+        $activistId   = (int) $activist['id'];
+        $metaConector = max(1, (int) ($activist['meta_conector'] ?? 50));
+        $metaExperto  = max(1, (int) ($activist['meta_experto'] ?? 50));
+        $metaVendedor = max(1, (int) ($activist['meta_vendedor'] ?? 50));
+        $meta         = $metaConector + $metaExperto + $metaVendedor;
 
         $rows = $this->db->table('talents')
             ->select('validacion, COUNT(*) as total')
@@ -228,13 +239,37 @@ class AuthController extends BaseApiController
             $total += $cnt;
         }
 
+        $clasifRows = $this->db->table('talents')
+            ->select('clasificacion, COUNT(*) as total')
+            ->where('activist_id', $activistId)
+            ->where('deleted_at IS NULL')
+            ->where('validacion !=', 'rechazado')
+            ->groupBy('clasificacion')
+            ->get()
+            ->getResultArray();
+
+        $byClasif = [
+            'Conector' => 0,
+            'Experto'  => 0,
+            'Vendedor' => 0,
+        ];
+        foreach ($clasifRows as $cr) {
+            $cat = (string) ($cr['clasificacion'] ?? 'Conector');
+            if (isset($byClasif[$cat])) {
+                $byClasif[$cat] = (int) $cr['total'];
+            }
+        }
+
         $efectivos  = $total - $counts['rechazado'];
         $porcentaje = round(min(100, ($efectivos / $meta) * 100), 1);
 
         return $this->apiResponse([
             'activist_id'           => $activistId,
             'status'                => $activist['status'],
-            'meta'                  => (int) $activist['meta'],
+            'meta'                  => $meta,
+            'meta_conector'         => $metaConector,
+            'meta_experto'          => $metaExperto,
+            'meta_vendedor'         => $metaVendedor,
             'fecha_limite'          => $activist['fecha_limite'],
             'registrados'           => $total,
             'validados'             => $counts['validado'],
@@ -242,6 +277,23 @@ class AuthController extends BaseApiController
             'observados'            => $counts['observado'],
             'rechazados'            => $counts['rechazado'],
             'porcentaje'            => $porcentaje,
+            'por_clasificacion'     => [
+                'Conector' => [
+                    'registrados' => $byClasif['Conector'],
+                    'meta'        => $metaConector,
+                    'porcentaje'  => round(min(100, ($byClasif['Conector'] / $metaConector) * 100), 1),
+                ],
+                'Experto' => [
+                    'registrados' => $byClasif['Experto'],
+                    'meta'        => $metaExperto,
+                    'porcentaje'  => round(min(100, ($byClasif['Experto'] / $metaExperto) * 100), 1),
+                ],
+                'Vendedor' => [
+                    'registrados' => $byClasif['Vendedor'],
+                    'meta'        => $metaVendedor,
+                    'porcentaje'  => round(min(100, ($byClasif['Vendedor'] / $metaVendedor) * 100), 1),
+                ],
+            ],
         ]);
     }
 
@@ -263,17 +315,23 @@ class AuthController extends BaseApiController
         ];
 
         if ($activist !== null) {
+            $metaCon = (int) ($activist['meta_conector'] ?? 50);
+            $metaExp = (int) ($activist['meta_experto'] ?? 50);
+            $metaVen = (int) ($activist['meta_vendedor'] ?? 50);
             $payload['activist'] = [
-                'id'           => (int) $activist['id'],
-                'nombre'       => (string) $activist['nombre'],
-                'ap_paterno'   => (string) $activist['ap_paterno'],
-                'ap_materno'   => $activist['ap_materno'],
-                'telefono'     => (string) $activist['telefono'],
-                'estado_id'    => (int) $activist['estado_id'],
-                'municipio_id' => $activist['municipio_id'] !== null ? (int) $activist['municipio_id'] : null,
-                'meta'         => (int) $activist['meta'],
-                'fecha_limite' => $activist['fecha_limite'],
-                'status'       => (string) $activist['status'],
+                'id'            => (int) $activist['id'],
+                'nombre'        => (string) $activist['nombre'],
+                'ap_paterno'    => (string) $activist['ap_paterno'],
+                'ap_materno'    => $activist['ap_materno'],
+                'telefono'      => (string) $activist['telefono'],
+                'estado_id'     => (int) $activist['estado_id'],
+                'municipio_id'  => $activist['municipio_id'] !== null ? (int) $activist['municipio_id'] : null,
+                'meta'          => $metaCon + $metaExp + $metaVen,
+                'meta_conector' => $metaCon,
+                'meta_experto'  => $metaExp,
+                'meta_vendedor' => $metaVen,
+                'fecha_limite'  => $activist['fecha_limite'],
+                'status'        => (string) $activist['status'],
             ];
         }
 

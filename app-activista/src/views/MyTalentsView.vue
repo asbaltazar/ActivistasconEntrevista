@@ -38,11 +38,59 @@
       </svg>
     </div>
 
+    <!-- Banner de reactivación de sesión si expiró el token -->
+    <div
+      v-if="store.sessionExpired"
+      class="bg-rose-50 rounded-2xl p-4 border border-rose-200 shadow-xs space-y-2.5 text-xs text-rose-900"
+    >
+      <div class="font-bold text-rose-800">
+        Tu sesión expiró (por reinicio de la base de datos). Confirma tus credenciales para renovar la sesión y sincronizar tus Talentos guardados:
+      </div>
+      <form class="space-y-2" @submit.prevent="handleRenewAndSync">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input
+            v-model="renewUsername"
+            type="text"
+            required
+            placeholder="Usuario (ej. activista1)"
+            class="px-3 py-2 rounded-lg border border-rose-300 bg-white text-slate-900 text-xs font-medium"
+          />
+          <input
+            v-model="renewPassword"
+            type="password"
+            required
+            placeholder="Contraseña"
+            class="px-3 py-2 rounded-lg border border-rose-300 bg-white text-slate-900 text-xs"
+          />
+        </div>
+        <div v-if="renewError" class="text-[11px] font-bold text-rose-700">{{ renewError }}</div>
+        <button
+          type="submit"
+          :disabled="renewLoading"
+          class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs cursor-pointer"
+        >
+          {{ renewLoading ? 'Renovando sesión y sincronizando...' : 'Reactivar Sesión y Sincronizar Ahora' }}
+        </button>
+      </form>
+    </div>
+
     <!-- Cola local en IndexedDB (Pendientes / Sincronizados / Error) -->
     <div class="space-y-2.5">
-      <h3 class="text-xs font-extrabold uppercase text-slate-500 px-1">
-        Registros en este Dispositivo y Servidor ({{ filteredList.length }})
-      </h3>
+      <div class="flex items-center justify-between px-1">
+        <h3 class="text-xs font-extrabold uppercase text-slate-500">
+          Registros en este Dispositivo y Servidor ({{ filteredList.length }})
+        </h3>
+        <button
+          v-if="store.queueCounts.pendiente + store.queueCounts.error > 0"
+          type="button"
+          :disabled="!store.isOnline || store.syncInProgress"
+          class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold cursor-pointer disabled:opacity-40"
+          @click="retrySyncAll"
+        >
+          <i class="pi pi-sync mr-1" :class="{ 'pi-spin': store.syncInProgress }"></i>
+          Sincronizar ahora
+        </button>
+      </div>
 
       <div
         v-for="item in filteredList"
@@ -97,6 +145,29 @@ const searchQuery = ref('');
 const showMap = ref(false);
 const localItems = ref([]);
 const serverItems = ref([]);
+const renewUsername = ref(store.user?.username || 'activista1');
+const renewPassword = ref('');
+const renewLoading = ref(false);
+const renewError = ref('');
+
+async function retrySyncAll() {
+  await store.syncPendingQueue();
+  await loadTalents();
+}
+
+async function handleRenewAndSync() {
+  renewError.value = '';
+  renewLoading.value = true;
+  try {
+    await store.renewSession(renewUsername.value, renewPassword.value);
+    renewPassword.value = '';
+    await loadTalents();
+  } catch (err) {
+    renewError.value = err.response?.data?.errors?.[0] || 'Credenciales inválidas. Verifica usuario y contraseña.';
+  } finally {
+    renewLoading.value = false;
+  }
+}
 
 const filteredList = computed(() => {
   const byUuid = new Map();
@@ -131,6 +202,7 @@ const filteredList = computed(() => {
 });
 
 async function loadTalents() {
+  await store.refreshQueueCounts();
   localItems.value = await db.talentsQueue.reverse().toArray();
   if (store.isOnline) {
     try {

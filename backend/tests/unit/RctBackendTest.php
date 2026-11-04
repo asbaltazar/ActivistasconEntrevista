@@ -100,6 +100,16 @@ TEXT;
         $this->assertFalse($db->tableExists('cat_secciones'));
         $this->assertFalse($db->tableExists('cat_cp'));
 
+        // Verificar metas en settings (50 Conector, 50 Experto, 50 Vendedor, 150 Total)
+        $conSetting = $db->table('settings')->where('setting_key', 'meta_conector_default')->get()->getRowArray();
+        $expSetting = $db->table('settings')->where('setting_key', 'meta_experto_default')->get()->getRowArray();
+        $venSetting = $db->table('settings')->where('setting_key', 'meta_vendedor_default')->get()->getRowArray();
+        $actSetting = $db->table('settings')->where('setting_key', 'meta_activista_default')->get()->getRowArray();
+        $this->assertSame('50', $conSetting['setting_value'] ?? null);
+        $this->assertSame('50', $expSetting['setting_value'] ?? null);
+        $this->assertSame('50', $venSetting['setting_value'] ?? null);
+        $this->assertSame('150', $actSetting['setting_value'] ?? null);
+
         // 2. Alta directa de Activista en estado activo
         $now = date('Y-m-d H:i:s');
         $db->table('users')->insert([
@@ -119,7 +129,10 @@ TEXT;
             'telefono'               => '5598765432',
             'telefono_verificado_at' => $now,
             'estado_id'              => 9,
-            'meta'                   => 50,
+            'meta'                   => 150,
+            'meta_conector'          => 50,
+            'meta_experto'           => 50,
+            'meta_vendedor'          => 50,
             'status'                 => 'activo',
             'created_at'             => $now,
         ]);

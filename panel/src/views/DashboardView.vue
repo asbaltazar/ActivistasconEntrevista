@@ -13,7 +13,9 @@
         <div class="mt-3 w-full bg-slate-100 h-2 rounded-full overflow-hidden">
           <div class="bg-emerald-600 h-full transition-all" :style="{ width: `${dash.kpis.porcentaje_global}%` }"></div>
         </div>
-        <p class="text-xs text-slate-500 mt-1.5">{{ dash.kpis.porcentaje_global }}% de avance global</p>
+        <p class="text-xs text-slate-500 mt-1.5">
+          {{ dash.kpis.porcentaje_global }}% de avance ({{ dash.kpis.meta_por_activista || 150 }} por activista)
+        </p>
       </div>
 
       <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
@@ -57,11 +59,109 @@
       </div>
     </div>
 
+    <!-- Tarjetas de Seguimiento de Metas por Clasificación (50 Conector, 50 Experto, 50 Vendedor por Activista) -->
+    <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="text-sm font-bold text-slate-800">
+            Seguimiento de Metas por Clasificación de Talento
+          </h3>
+          <p class="text-xs text-slate-500">
+            Meta requerida por cada Activista:
+            <strong>{{ dash.kpis.meta_conector_default || 50 }} Conector</strong> ·
+            <strong>{{ dash.kpis.meta_experto_default || 50 }} Experto</strong> ·
+            <strong>{{ dash.kpis.meta_vendedor_default || 50 }} Vendedor</strong>
+            ({{ dash.kpis.meta_por_activista || 150 }} en total por Activista)
+          </p>
+        </div>
+        <router-link
+          to="/auditoria"
+          class="text-xs font-semibold text-emerald-700 hover:underline"
+        >
+          <i class="pi pi-cog mr-1"></i>Ajustar metas en Configuración
+        </router-link>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Conector -->
+        <div class="p-4 rounded-xl bg-blue-50/60 border border-blue-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold uppercase text-blue-900">Tipo Conector</span>
+            <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-bold">
+              {{ dash.clasificaciones_resumen.Conector.porcentaje }}%
+            </span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <span class="text-2xl font-extrabold text-blue-950">
+              {{ dash.clasificaciones_resumen.Conector.registrados }} / {{ dash.clasificaciones_resumen.Conector.meta_global }}
+            </span>
+            <span class="text-xs text-blue-700">
+              Meta por activista: <strong>{{ dash.clasificaciones_resumen.Conector.meta_por_activista }}</strong>
+            </span>
+          </div>
+          <div class="w-full bg-blue-200/70 h-2.5 rounded-full overflow-hidden">
+            <div
+              class="bg-blue-600 h-full transition-all"
+              :style="{ width: `${dash.clasificaciones_resumen.Conector.porcentaje}%` }"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Experto -->
+        <div class="p-4 rounded-xl bg-purple-50/60 border border-purple-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold uppercase text-purple-900">Tipo Experto</span>
+            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-bold">
+              {{ dash.clasificaciones_resumen.Experto.porcentaje }}%
+            </span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <span class="text-2xl font-extrabold text-purple-950">
+              {{ dash.clasificaciones_resumen.Experto.registrados }} / {{ dash.clasificaciones_resumen.Experto.meta_global }}
+            </span>
+            <span class="text-xs text-purple-700">
+              Meta por activista: <strong>{{ dash.clasificaciones_resumen.Experto.meta_por_activista }}</strong>
+            </span>
+          </div>
+          <div class="w-full bg-purple-200/70 h-2.5 rounded-full overflow-hidden">
+            <div
+              class="bg-purple-600 h-full transition-all"
+              :style="{ width: `${dash.clasificaciones_resumen.Experto.porcentaje}%` }"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Vendedor -->
+        <div class="p-4 rounded-xl bg-amber-50/60 border border-amber-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold uppercase text-amber-900">Tipo Vendedor</span>
+            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-bold">
+              {{ dash.clasificaciones_resumen.Vendedor.porcentaje }}%
+            </span>
+          </div>
+          <div class="flex items-baseline justify-between">
+            <span class="text-2xl font-extrabold text-amber-950">
+              {{ dash.clasificaciones_resumen.Vendedor.registrados }} / {{ dash.clasificaciones_resumen.Vendedor.meta_global }}
+            </span>
+            <span class="text-xs text-amber-700">
+              Meta por activista: <strong>{{ dash.clasificaciones_resumen.Vendedor.meta_por_activista }}</strong>
+            </span>
+          </div>
+          <div class="w-full bg-amber-200/70 h-2.5 rounded-full overflow-hidden">
+            <div
+              class="bg-amber-600 h-full transition-all"
+              :style="{ width: `${dash.clasificaciones_resumen.Vendedor.porcentaje}%` }"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Ranking de Activistas y Semáforo -->
       <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 class="font-bold text-slate-800 text-sm">Ranking de Activistas y Avance de Meta</h3>
+          <h3 class="font-bold text-slate-800 text-sm">Ranking de Activistas y Avance por Clasificación</h3>
           <button
             type="button"
             class="text-xs text-emerald-600 hover:underline font-semibold cursor-pointer"
@@ -76,8 +176,8 @@
             <thead>
               <tr class="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
                 <th class="py-3 px-4">Activista</th>
-                <th class="py-3 px-4">Entidad</th>
-                <th class="py-3 px-4">Avance / Meta</th>
+                <th class="py-3 px-4">Desglose (Conector / Experto / Vendedor)</th>
+                <th class="py-3 px-4">Avance Total</th>
                 <th class="py-3 px-4">Semáforo</th>
                 <th class="py-3 px-4">Última Sincronización</th>
               </tr>
@@ -86,9 +186,21 @@
               <tr v-for="act in dash.ranking" :key="act.id" class="hover:bg-slate-50">
                 <td class="py-3 px-4">
                   <div class="font-semibold text-slate-900">{{ act.nombre_completo }}</div>
-                  <div class="text-xs text-slate-400">@{{ act.username }}</div>
+                  <div class="text-xs text-slate-400">@{{ act.username }} · {{ act.estado_nombre }}</div>
                 </td>
-                <td class="py-3 px-4 text-xs text-slate-600">{{ act.estado_nombre }}</td>
+                <td class="py-3 px-4">
+                  <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+                    <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                      Conector: {{ act.conector_registrados ?? 0 }}/{{ act.meta_conector ?? 50 }}
+                    </span>
+                    <span class="px-2 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200">
+                      Experto: {{ act.experto_registrados ?? 0 }}/{{ act.meta_experto ?? 50 }}
+                    </span>
+                    <span class="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                      Vendedor: {{ act.vendedor_registrados ?? 0 }}/{{ act.meta_vendedor ?? 50 }}
+                    </span>
+                  </div>
+                </td>
                 <td class="py-3 px-4">
                   <div class="flex items-center justify-between text-xs font-semibold mb-1">
                     <span>{{ act.registrados }} / {{ act.meta }}</span>
@@ -200,13 +312,22 @@ const dash = reactive({
     total: 0,
     hoy: 0,
     semana: 0,
-    meta_global: 2500,
+    meta_global: 150,
+    meta_por_activista: 150,
+    meta_conector_default: 50,
+    meta_experto_default: 50,
+    meta_vendedor_default: 50,
     porcentaje_global: 0,
     validados: 0,
     pendientes: 0,
     observados: 0,
     rechazados: 0,
     total_activistas: 0,
+  },
+  clasificaciones_resumen: {
+    Conector: { registrados: 0, meta_por_activista: 50, meta_global: 50, porcentaje: 0 },
+    Experto: { registrados: 0, meta_por_activista: 50, meta_global: 50, porcentaje: 0 },
+    Vendedor: { registrados: 0, meta_por_activista: 50, meta_global: 50, porcentaje: 0 },
   },
   semaforo_resumen: { verde: 0, amarillo: 0, rojo: 0 },
   ranking: [],
@@ -217,7 +338,9 @@ const dash = reactive({
 async function loadDashboard() {
   try {
     const { data: res } = await api.get('/admin/dashboard');
-    Object.assign(dash, res.data);
+    if (res.data) {
+      Object.assign(dash, res.data);
+    }
   } catch {
     // Mantiene estado por defecto si aún no hay conexión
   }
@@ -225,4 +348,3 @@ async function loadDashboard() {
 
 onMounted(loadDashboard);
 </script>
-

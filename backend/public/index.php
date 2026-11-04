@@ -37,6 +37,13 @@ if (getcwd() . DIRECTORY_SEPARATOR !== FCPATH) {
     chdir(FCPATH);
 }
 
+// Normalizar REQUEST_URI y SCRIPT_NAME cuando se invoca vía rewrite desde la raíz (/api/v1/...)
+if (isset($_SERVER['REQUEST_URI']) && preg_match('#/(api/v1(?:/.*|\?.*|$)|v1(?:/.*|\?.*|$))#i', (string) $_SERVER['REQUEST_URI'], $uriMatch)) {
+    $_SERVER['REQUEST_URI'] = '/' . ltrim($uriMatch[1], '/');
+    $_SERVER['SCRIPT_NAME'] = '/index.php';
+    $_SERVER['PHP_SELF']    = '/index.php';
+}
+
 /*
  *---------------------------------------------------------------
  * BOOTSTRAP THE APPLICATION

@@ -46,12 +46,31 @@ export async function decryptLocalPayload(envelope, pin) {
     const jsonStr = decodeURIComponent(escape(atob(envelope.data)));
     return JSON.parse(jsonStr);
   }
-  const key = await deriveAesKey(pin);
+
+  const candidatePins = [
+    pin,
+    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('rct_session_pin') : null,
+    typeof localStorage !== 'undefined' ? localStorage.getItem('rct_last_pin') : null,
+    '0000',
+    '1234',
+  ].filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+
   const iv = new Uint8Array(envelope.iv);
   const cipherBytes = new Uint8Array(envelope.data);
-  const plainBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipherBytes);
-  const jsonStr = new TextDecoder().decode(plainBuffer);
-  return JSON.parse(jsonStr);
+  let lastErr = null;
+
+  for (const candidate of candidatePins) {
+    try {
+      const key = await deriveAesKey(candidate);
+      const plainBuffer = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipherBytes);
+      const jsonStr = new TextDecoder().decode(plainBuffer);
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  throw lastErr || new Error('No fue posible descifrar el registro local.');
 }
 
 export async function hashPin(pin) {

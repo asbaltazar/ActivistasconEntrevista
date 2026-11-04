@@ -53,7 +53,7 @@
               <th class="py-3 px-4">Activista / Usuario</th>
               <th class="py-3 px-4">Teléfono</th>
               <th class="py-3 px-4">Zona Operativa</th>
-              <th class="py-3 px-4">Avance Meta</th>
+              <th class="py-3 px-4">Avance Meta (50 Con · 50 Exp · 50 Ven)</th>
               <th class="py-3 px-4">Estatus</th>
               <th class="py-3 px-4 text-right">Acciones</th>
             </tr>
@@ -72,9 +72,22 @@
                 <div class="text-slate-400">{{ act.municipio_nombre || 'Estatal' }}</div>
               </td>
               <td class="py-3 px-4">
-                <div class="text-xs font-semibold mb-1">{{ act.registrados }} / {{ act.meta }} ({{ act.porcentaje }}%)</div>
-                <div class="w-32 bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div class="text-xs font-semibold mb-1">
+                  Total: {{ act.registrados }} / {{ act.meta }} ({{ act.porcentaje }}%)
+                </div>
+                <div class="w-40 bg-slate-100 h-2 rounded-full overflow-hidden mb-1.5">
                   <div class="bg-emerald-600 h-full" :style="{ width: `${act.porcentaje}%` }"></div>
+                </div>
+                <div class="flex flex-wrap gap-1 text-[10px] font-semibold">
+                  <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                    Con: {{ act.conector_registrados ?? 0 }}/{{ act.meta_conector ?? 50 }}
+                  </span>
+                  <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200">
+                    Exp: {{ act.experto_registrados ?? 0 }}/{{ act.meta_experto ?? 50 }}
+                  </span>
+                  <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                    Ven: {{ act.vendedor_registrados ?? 0 }}/{{ act.meta_vendedor ?? 50 }}
+                  </span>
                 </div>
                 <div class="text-[11px] text-slate-400 mt-0.5">Límite: {{ act.fecha_limite || 'N/A' }}</div>
               </td>
@@ -194,11 +207,28 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Meta de Talentos (n) *</label>
-              <input v-model.number="form.meta" type="number" min="1" required class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+            <div class="flex items-center justify-between text-xs font-bold text-slate-700">
+              <span>Metas por Clasificación</span>
+              <span>Meta Total: {{ Number(form.meta_conector || 0) + Number(form.meta_experto || 0) + Number(form.meta_vendedor || 0) }} Talentos</span>
             </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-xs font-semibold text-blue-700 mb-1">Conector *</label>
+                <input v-model.number="form.meta_conector" type="number" min="1" required class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-purple-700 mb-1">Experto *</label>
+                <input v-model.number="form.meta_experto" type="number" min="1" required class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-amber-700 mb-1">Vendedor *</label>
+                <input v-model.number="form.meta_vendedor" type="number" min="1" required class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-semibold text-slate-600 mb-1">Fecha Límite *</label>
               <input v-model="form.fecha_limite" type="date" required class="w-full px-3 py-2 rounded-lg border border-slate-300" />
@@ -303,7 +333,10 @@ const form = reactive({
   email: '',
   estado_id: 9,
   municipio_id: null,
-  meta: 50,
+  meta: 150,
+  meta_conector: 50,
+  meta_experto: 50,
+  meta_vendedor: 50,
   fecha_limite: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
   status: 'activo',
 });
@@ -327,7 +360,10 @@ function openCreateModal() {
     email: '',
     estado_id: 9,
     municipio_id: null,
-    meta: 50,
+    meta: 150,
+    meta_conector: 50,
+    meta_experto: 50,
+    meta_vendedor: 50,
     fecha_limite: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
     status: 'activo',
   });
@@ -345,7 +381,10 @@ function openEditModal(act) {
     email: act.email || '',
     estado_id: act.estado_id,
     municipio_id: act.municipio_id,
-    meta: act.meta,
+    meta: act.meta || 150,
+    meta_conector: act.meta_conector ?? 50,
+    meta_experto: act.meta_experto ?? 50,
+    meta_vendedor: act.meta_vendedor ?? 50,
     fecha_limite: act.fecha_limite || '',
     status: act.status,
   });
@@ -355,6 +394,7 @@ function openEditModal(act) {
 
 async function saveActivist() {
   modalError.value = '';
+  form.meta = Number(form.meta_conector || 50) + Number(form.meta_experto || 50) + Number(form.meta_vendedor || 50);
   try {
     if (form.id) {
       await api.put(`/admin/activists/${form.id}`, form);

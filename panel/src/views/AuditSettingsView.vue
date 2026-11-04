@@ -46,12 +46,12 @@
       </div>
     </div>
 
-    <!-- Configuración Legal LFPDPPP y Parámetros (RF-P10) -->
+    <!-- Configuración Legal LFPDPPP y Parámetros de Metas en tabla `settings` (RF-P10) -->
     <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
       <div>
-        <h3 class="text-sm font-bold text-slate-800">Configuración y Aviso de Privacidad (LFPDPPP)</h3>
+        <h3 class="text-sm font-bold text-slate-800">Metas por Clasificación y Configuración (`settings`)</h3>
         <p class="text-xs text-slate-500 mt-0.5">
-          Las llaves de API se gestionan exclusivamente en `.env` fuera del repositorio.
+          Metas requeridas por Activista en la tabla `settings` y texto del Aviso de Privacidad LFPDPPP.
         </p>
       </div>
 
@@ -59,14 +59,59 @@
         {{ savedMsg }}
       </div>
 
-      <form class="space-y-3 text-xs" @submit.prevent="saveSettings">
+      <form class="space-y-3.5 text-xs" @submit.prevent="saveSettings">
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+          <div class="font-bold text-slate-800 flex items-center justify-between">
+            <span>Metas por Activista (Tabla `settings`)</span>
+            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono">
+              Total: {{ totalActivistMeta }}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="font-semibold text-blue-800 block mb-1">Meta Conector</label>
+              <input
+                v-model.number="settings.meta_conector_default"
+                type="number"
+                min="1"
+                required
+                class="w-full px-2.5 py-2 rounded-lg border border-blue-300 bg-white font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label class="font-semibold text-purple-800 block mb-1">Meta Experto</label>
+              <input
+                v-model.number="settings.meta_experto_default"
+                type="number"
+                min="1"
+                required
+                class="w-full px-2.5 py-2 rounded-lg border border-purple-300 bg-white font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label class="font-semibold text-amber-800 block mb-1">Meta Vendedor</label>
+              <input
+                v-model.number="settings.meta_vendedor_default"
+                type="number"
+                min="1"
+                required
+                class="w-full px-2.5 py-2 rounded-lg border border-amber-300 bg-white font-mono font-bold"
+              />
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500">
+            Al guardar, se actualiza `meta_conector_default`, `meta_experto_default`, `meta_vendedor_default` y `meta_activista_default` ({{ totalActivistMeta }}) en la tabla `settings`.
+          </p>
+        </div>
+
         <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="font-semibold text-slate-600 block mb-1">Versión del Aviso</label>
             <input v-model="settings.aviso_privacidad_version" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
           </div>
           <div>
-            <label class="font-semibold text-slate-600 block mb-1">Meta Global Nacional</label>
+            <label class="font-semibold text-slate-600 block mb-1">Meta Global Referencia</label>
             <input v-model="settings.meta_global_default" type="number" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
           </div>
         </div>
@@ -75,7 +120,7 @@
           <label class="font-semibold text-slate-600 block mb-1">Texto del Aviso de Privacidad (Mostrado en App)</label>
           <textarea
             v-model="settings.aviso_privacidad_texto"
-            rows="6"
+            rows="5"
             class="w-full px-3 py-2 rounded-lg border border-slate-300"
           ></textarea>
         </div>
@@ -85,7 +130,7 @@
           type="submit"
           class="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
         >
-          Guardar Configuración
+          Guardar Metas y Configuración
         </button>
       </form>
     </div>
@@ -93,7 +138,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import api from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 
@@ -105,8 +150,19 @@ const savedMsg = ref('');
 const settings = reactive({
   aviso_privacidad_version: '1.0',
   meta_global_default: '2500',
+  meta_conector_default: 50,
+  meta_experto_default: 50,
+  meta_vendedor_default: 50,
+  meta_activista_default: 150,
   aviso_privacidad_texto: '',
 });
+
+const totalActivistMeta = computed(
+  () =>
+    Number(settings.meta_conector_default || 0) +
+    Number(settings.meta_experto_default || 0) +
+    Number(settings.meta_vendedor_default || 0)
+);
 
 async function loadAudit() {
   const params = {};
@@ -117,13 +173,23 @@ async function loadAudit() {
 
 async function loadSettings() {
   const { data: res } = await api.get('/admin/settings');
-  if (res.data) Object.assign(settings, res.data);
+  if (res.data) {
+    Object.assign(settings, {
+      ...res.data,
+      meta_conector_default: Number(res.data.meta_conector_default ?? 50),
+      meta_experto_default: Number(res.data.meta_experto_default ?? 50),
+      meta_vendedor_default: Number(res.data.meta_vendedor_default ?? 50),
+      meta_activista_default: Number(res.data.meta_activista_default ?? 150),
+    });
+  }
 }
 
 async function saveSettings() {
   savedMsg.value = '';
+  settings.meta_activista_default = totalActivistMeta.value;
   await api.put('/admin/settings', settings);
-  savedMsg.value = 'Parámetros actualizados correctamente.';
+  savedMsg.value = 'Metas por clasificación y parámetros actualizados en la tabla settings.';
+  await loadSettings();
   await loadAudit();
 }
 

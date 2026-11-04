@@ -8,12 +8,20 @@ export const useActivistStore = defineStore('activistStore', {
     token: localStorage.getItem('rct_activista_token') || null,
     user: JSON.parse(localStorage.getItem('rct_activista_user') || 'null'),
     pinHash: localStorage.getItem('rct_activista_pin_hash') || null,
-    sessionPin: '0000',
+    sessionPin:
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('rct_session_pin')) ||
+      localStorage.getItem('rct_last_pin') ||
+      '0000',
     unlocked: !localStorage.getItem('rct_activista_pin_hash'),
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
     syncInProgress: false,
+    sessionExpired: false,
+    lastSyncError: null,
     progress: {
-      meta: 50,
+      meta: 150,
+      meta_conector: 50,
+      meta_experto: 50,
+      meta_vendedor: 50,
       registrados: 0,
       validados: 0,
       pendientes_validacion: 0,
@@ -21,6 +29,11 @@ export const useActivistStore = defineStore('activistStore', {
       rechazados: 0,
       porcentaje: 0,
       telefono_verificado: true,
+      por_clasificacion: {
+        Conector: { registrados: 0, meta: 50, porcentaje: 0 },
+        Experto: { registrados: 0, meta: 50, porcentaje: 0 },
+        Vendedor: { registrados: 0, meta: 50, porcentaje: 0 },
+      },
     },
     queueCounts: {
       borrador: 0,
@@ -61,7 +74,11 @@ export const useActivistStore = defineStore('activistStore', {
         });
       }
       this.refreshQueueCounts();
-      this.loadCatalogsFromIndexedDb();
+      this.loadCatalogsFromIndexedDb().then(() => {
+        if (this.isOnline && this.token) {
+          this.downloadCatalogsForOffline();
+        }
+      });
     },
 
     async login(username, password) {
@@ -73,11 +90,18 @@ export const useActivistStore = defineStore('activistStore', {
       const payload = res.data;
       this.token = payload.token;
       this.user = payload.user;
+      this.sessionExpired = false;
+      this.lastSyncError = null;
       localStorage.setItem('rct_activista_token', payload.token);
       localStorage.setItem('rct_activista_user', JSON.stringify(payload.user));
       await this.downloadCatalogsForOffline();
+      await this.syncPendingQueue();
       await this.fetchProgress();
       return payload;
+    },
+
+    async renewSession(username, password) {
+      return await this.login(username, password);
     },
 
     async setOfflinePin(pin) {
@@ -86,6 +110,10 @@ export const useActivistStore = defineStore('activistStore', {
       this.sessionPin = pin;
       this.unlocked = true;
       localStorage.setItem('rct_activista_pin_hash', h);
+      localStorage.setItem('rct_last_pin', pin);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('rct_session_pin', pin);
+      }
     },
 
     async unlockWithPin(pin) {
@@ -95,6 +123,10 @@ export const useActivistStore = defineStore('activistStore', {
       }
       this.sessionPin = pin;
       this.unlocked = true;
+      localStorage.setItem('rct_last_pin', pin);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('rct_session_pin', pin);
+      }
       return true;
     },
 
@@ -147,21 +179,38 @@ export const useActivistStore = defineStore('activistStore', {
         const { data: res } = await api.get('/me/progress');
         if (res.data) {
           this.progress = res.data;
+          this.sessionExpired = false;
         }
-      } catch {
-        // Mantener valores locales en modo offline
+      } catch (err) {
+        if (err.response?.status === 401) {
+          this.sessionExpired = true;
+          this.lastSyncError =
+            'Tu sesión expiró (por reinicio del servidor/base de datos). Ingresa tu contraseña para reactivar la sesión y sincronizar.';
+        }
       }
     },
 
     async refreshQueueCounts() {
       const all = await db.talentsQueue.toArray();
       const counts = { borrador: 0, pendiente: 0, enviando: 0, sincronizado: 0, error: 0 };
+      let latestErr = null;
       for (const item of all) {
         if (counts[item.status] !== undefined) {
           counts[item.status]++;
         }
+        if (item.status === 'error' && item.lastError) {
+          latestErr = item.lastError;
+        }
       }
       this.queueCounts = counts;
+      if (latestErr) {
+        this.lastSyncError = latestErr;
+        if (latestErr.toLowerCase().includes('sesión') || latestErr.toLowerCase().includes('expirad')) {
+          this.sessionExpired = true;
+        }
+      } else if (counts.error === 0) {
+        this.lastSyncError = null;
+      }
     },
 
     /**
@@ -260,12 +309,21 @@ export const useActivistStore = defineStore('activistStore', {
               'Error de conexión al sincronizar';
             const retries = (item.retries || 0) + 1;
 
+            if (err.response?.status === 401) {
+              this.sessionExpired = true;
+            }
+            this.lastSyncError = errMsg;
+
             await db.talentsQueue.update(item.uuid, {
               status: 'error',
               retries,
               lastError: errMsg,
               updatedAt: new Date().toISOString(),
             });
+
+            if (err.response?.status === 401) {
+              break;
+            }
 
             if (!err.response) {
               const delayMs = Math.min(8000, 500 * Math.pow(2, retries));

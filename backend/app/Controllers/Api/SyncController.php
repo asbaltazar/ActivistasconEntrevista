@@ -121,11 +121,23 @@ class SyncController extends BaseApiController
         $municipioClave    = trim((string) ($item['municipio_clave'] ?? $item['municipio_id'] ?? '001'));
         $localidadClave    = trim((string) ($item['localidad_clave'] ?? $item['localidad_id'] ?? '0001'));
         $seccion           = (int) ($item['seccion'] ?? 0);
-        $vigencia          = (int) ($item['vigencia'] ?? date('Y'));
+        $rawVigencia       = trim((string) ($item['vigencia'] ?? date('Y')));
+        if (preg_match('/(\d{4})\s*$/', $rawVigencia, $vm)) {
+            $vigencia = (int) $vm[1];
+        } else {
+            $vigencia = (int) $rawVigencia ?: (int) date('Y');
+        }
         $anioRegistro      = !empty($item['anio_registro']) ? (int) $item['anio_registro'] : null;
         $claveElector      = strtoupper(trim((string) ($item['clave_elector'] ?? '')));
         $curp              = strtoupper(trim((string) ($item['curp'] ?? '')));
-        $fechaNac          = !empty($item['fecha_nacimiento']) ? trim((string) $item['fecha_nacimiento']) : null;
+        $rawFechaNac       = !empty($item['fecha_nacimiento']) ? trim((string) $item['fecha_nacimiento']) : '';
+        if (preg_match('/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/', $rawFechaNac, $fm)) {
+            $fechaNac = "{$fm[3]}-{$fm[2]}-{$fm[1]}";
+        } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawFechaNac)) {
+            $fechaNac = $rawFechaNac;
+        } else {
+            $fechaNac = null;
+        }
         $sexo              = !empty($item['sexo']) ? strtoupper(substr(trim((string) $item['sexo']), 0, 1)) : null;
         $telefono          = (string) preg_replace('/\D/', '', (string) ($item['telefono'] ?? ''));
         $email             = !empty($item['email']) ? trim((string) $item['email']) : null;

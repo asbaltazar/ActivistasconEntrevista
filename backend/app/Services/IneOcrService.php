@@ -56,43 +56,59 @@ class IneOcrService
      */
     private function callCloudVisionBytes(?string $imageBytes): array
     {
-        $apiKey      = (string) (env('GOOGLE_VISION_API_KEY') ?? env('GOOGLE_MAPS_SERVER_KEY') ?? '');
-        $credentials = (string) (env('GOOGLE_APPLICATION_CREDENTIALS') ?? '');
+        $visionKey   = trim((string) (env('GOOGLE_VISION_API_KEY') ?? ''));
+        $serverKey   = trim((string) (env('GOOGLE_MAPS_SERVER_KEY') ?? ''));
+        $credentials = trim((string) (env('GOOGLE_APPLICATION_CREDENTIALS') ?? ''));
+
+        $candidateKeys = array_values(array_unique(array_filter([$visionKey, $serverKey], static fn ($k) => $k !== '')));
 
         if ($imageBytes !== null && $imageBytes !== '') {
-            // 1. Intento vía REST con API Key de servidor
-            if ($apiKey !== '') {
-                try {
-                    $url     = 'https://vision.googleapis.com/v1/images:annotate?key=' . urlencode($apiKey);
-                    $payload = json_encode([
-                        'requests' => [[
-                            'image'    => ['content' => base64_encode($imageBytes)],
-                            'features' => [['type' => 'DOCUMENT_TEXT_DETECTION']],
-                        ]],
-                    ]);
+            // 1. Intento vía REST con API Key (enviando Referer autorizado para llaves con restricción HTTP Referrer)
+            $payload = json_encode([
+                'requests' => [[
+                    'image'    => ['content' => base64_encode($imageBytes)],
+                    'features' => [['type' => 'DOCUMENT_TEXT_DETECTION']],
+                ]],
+            ]);
 
-                    $ch = curl_init($url);
-                    if ($ch !== false) {
-                        curl_setopt_array($ch, [
-                            CURLOPT_POST           => true,
-                            CURLOPT_POSTFIELDS     => $payload,
-                            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                            CURLOPT_RETURNTRANSFER => true,
-                            CURLOPT_TIMEOUT        => 12,
-                        ]);
-                        $resp = curl_exec($ch);
-                        curl_close($ch);
+            $referers = [
+                'https://activistas.solytecmx.com/',
+                '',
+            ];
 
-                        if (is_string($resp)) {
-                            $decoded = json_decode($resp, true);
-                            $text    = $decoded['responses'][0]['fullTextAnnotation']['text'] ?? '';
-                            if (is_string($text) && $text !== '') {
-                                return ['text' => $text, 'provider' => 'google_vision_rest'];
+            foreach ($candidateKeys as $apiKey) {
+                foreach ($referers as $referer) {
+                    try {
+                        $url     = 'https://vision.googleapis.com/v1/images:annotate?key=' . urlencode($apiKey);
+                        $headers = ['Content-Type: application/json'];
+                        if ($referer !== '') {
+                            $headers[] = 'Referer: ' . $referer;
+                        }
+
+                        $ch = curl_init($url);
+                        if ($ch !== false) {
+                            curl_setopt_array($ch, [
+                                CURLOPT_POST           => true,
+                                CURLOPT_POSTFIELDS     => $payload,
+                                CURLOPT_HTTPHEADER     => $headers,
+                                CURLOPT_RETURNTRANSFER => true,
+                                CURLOPT_TIMEOUT        => 15,
+                                CURLOPT_SSL_VERIFYPEER => false,
+                            ]);
+                            $resp = curl_exec($ch);
+                            curl_close($ch);
+
+                            if (is_string($resp) && $resp !== '') {
+                                $decoded = json_decode($resp, true);
+                                $text    = $decoded['responses'][0]['fullTextAnnotation']['text'] ?? '';
+                                if (is_string($text) && $text !== '') {
+                                    return ['text' => $text, 'provider' => 'google_vision_rest'];
+                                }
                             }
                         }
+                    } catch (Throwable) {
+                        // Continúa al siguiente intento
                     }
-                } catch (Throwable) {
-                    // Continúa al siguiente método
                 }
             }
 
@@ -136,7 +152,7 @@ class IneOcrService
      */
     public function parseIneText(string $frenteText): array
     {
-        $combined = strtoupper(str_replace(["\r\n", "\r"], "\n", $frenteText));
+        $combined = mb_strtoupper(str_replace(["\r\n", "\r"], "\n", $frenteText), 'UTF-8');
         $lines    = array_values(array_filter(array_map('trim', explode("\n", $combined)), static fn ($l) => $l !== ''));
 
         $fields = [
@@ -175,19 +191,19 @@ class IneOcrService
         ];
 
         // 1. Clave de Elector (18 caracteres: 6 letras + 8 dígitos + H/M + 3 dígitos)
-        if (preg_match('/\b([A-Z]{6}\d{8}[HM]\d{3})\b/', $combined, $m)) {
+        if (preg_match('/\b([A-ZÑ]{6}\d{8}[HM]\d{3})\b/u', $combined, $m)) {
             $fields['clave_elector']     = $m[1];
             $confidence['clave_elector'] = 0.98;
         }
 
         // 2. CURP (18 caracteres)
-        if (preg_match('/\b([A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d)\b/', $combined, $m)) {
+        if (preg_match('/\b([A-ZÑ]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d)\b/u', $combined, $m)) {
             $fields['curp']     = $m[1];
             $confidence['curp'] = 0.98;
         }
 
         // 3. Claves numéricas de ESTADO, MUNICIPIO, LOCALIDAD y SECCIÓN
-        if (preg_match('/ESTADO\s*[:.]?\s*(\d{1,2})\b/', $combined, $m)) {
+        if (preg_match('/ESTADO\s*[:.]?\s*(\d{1,2})\b/u', $combined, $m)) {
             $fields['estado_clave']     = str_pad($m[1], 2, '0', STR_PAD_LEFT);
             $confidence['estado_clave'] = 0.95;
         } elseif ($fields['clave_elector'] !== '') {
@@ -195,33 +211,37 @@ class IneOcrService
             $estFromClave = substr($fields['clave_elector'], 12, 2);
             if (ctype_digit($estFromClave)) {
                 $fields['estado_clave']     = $estFromClave;
-                $confidence['estado_clave'] = 0.90;
+                $confidence['estado_clave'] = 0.92;
             }
         }
 
-        if (preg_match('/MUNICIPIO\s*[:.]?\s*(\d{1,3})\b/', $combined, $m)) {
+        if (preg_match('/MUNICIPIO\s*[:.]?\s*(\d{1,3})\b/u', $combined, $m)) {
             $fields['municipio_clave']     = str_pad($m[1], 3, '0', STR_PAD_LEFT);
             $confidence['municipio_clave'] = 0.95;
         }
 
-        if (preg_match('/LOCALIDAD\s*[:.]?\s*(\d{1,4})\b/', $combined, $m)) {
+        if (preg_match('/LOCALIDAD\s*[:.]?\s*(\d{1,4})\b/u', $combined, $m)) {
             $fields['localidad_clave']     = str_pad($m[1], 4, '0', STR_PAD_LEFT);
             $confidence['localidad_clave'] = 0.95;
         }
 
-        if (preg_match('/SECCI[OÓ0]N\s*[:.]?\s*(\d{1,4})\b/', $combined, $m)) {
-            $fields['seccion']     = (string) ((int) $m[1]);
+        // Sección electoral: soporta tanto "SECCIÓN 0024" en línea como encabezados en columnas "SECCIÓN\nVIGENCIA\n0024\n2022-2032"
+        if (preg_match('/SECCI[OÓ0]N\s*[:.]?\s*(?:VIGENCIA\s*[:.]?\s*)?(\d{3,4})\b/u', $combined, $m)) {
+            $fields['seccion']     = $m[1];
             $confidence['seccion'] = 0.95;
         }
 
-        // 4. Vigencia (año final de vigencia YYYY o rango YYYY-YYYY)
-        if (preg_match('/VIGENCIA\s*[:.]?\s*(?:\d{4}\s*[-–\/]\s*)?(\d{4})\b/', $combined, $m)) {
+        // 4. Vigencia: primero busca rango YYYY-YYYY (ej. 2022-2032) y si no, un año válido 2010-2049 tras VIGENCIA
+        if (preg_match('/\b20\d{2}\s*[-–\/]\s*(20\d{2})\b/u', $combined, $m)) {
             $fields['vigencia']     = $m[1];
-            $confidence['vigencia'] = 0.95;
+            $confidence['vigencia'] = 0.96;
+        } elseif (preg_match('/VIGENCIA[\s\S]{0,25}?\b(20[1-4]\d)\b/u', $combined, $m)) {
+            $fields['vigencia']     = $m[1];
+            $confidence['vigencia'] = 0.93;
         }
 
         // 5. Año de registro
-        if (preg_match('/REGISTRO\s*[:.]?\s*(\d{4})\b/', $combined, $m)) {
+        if (preg_match('/REGISTRO\s*[:.]?\s*(\d{4})\b/u', $combined, $m)) {
             $fields['anio_registro'] = $m[1];
         }
 
@@ -239,7 +259,7 @@ class IneOcrService
         }
 
         // 7. Sexo (H / M)
-        if (preg_match('/SEXO\s*[:.]?\s*([HM])\b/', $combined, $m)) {
+        if (preg_match('/SEXO\s*[:.]?\s*([HM])\b/u', $combined, $m)) {
             $fields['sexo']     = $m[1];
             $confidence['sexo'] = 0.96;
         } elseif ($fields['curp'] !== '') {
@@ -254,20 +274,20 @@ class IneOcrService
         $nombreIdx = null;
         $domIdx    = null;
         foreach ($lines as $idx => $line) {
-            if ($nombreIdx === null && preg_match('/\bNOMBRE\b/', $line)) {
+            if ($nombreIdx === null && preg_match('/\bNOMBRE\b/u', $line)) {
                 $nombreIdx = $idx;
             }
-            if ($domIdx === null && preg_match('/\bDOMICILIO\b/', $line)) {
+            if ($domIdx === null && preg_match('/\bDOMICILIO\b/u', $line)) {
                 $domIdx = $idx;
             }
         }
 
         if ($nombreIdx !== null) {
             $nameLines = [];
-            $limit     = $domIdx !== null ? min($domIdx, $nombreIdx + 5) : min(count($lines), $nombreIdx + 4);
+            $limit     = $domIdx !== null ? min($domIdx, $nombreIdx + 6) : min(count($lines), $nombreIdx + 5);
             for ($i = $nombreIdx + 1; $i < $limit; $i++) {
-                $clean = trim((string) preg_replace('/\b(FECHA DE NACIMIENTO|SEXO|DOMICILIO|EDAD).*$/', '', $lines[$i]));
-                if ($clean !== '' && !preg_match('/\d/', $clean)) {
+                $clean = trim((string) preg_replace('/\b(FECHA DE NACIMIENTO|SEXO|DOMICILIO|EDAD).*$/u', '', $lines[$i]));
+                if ($clean !== '' && !preg_match('/\d/', $clean) && mb_strlen($clean, 'UTF-8') > 1) {
                     $nameLines[] = $clean;
                 }
             }
@@ -290,7 +310,7 @@ class IneOcrService
         if ($domIdx !== null) {
             $domLines = [];
             for ($i = $domIdx + 1; $i < min(count($lines), $domIdx + 5); $i++) {
-                if (preg_match('/\b(FOLIO|CLAVE DE ELECTOR|CURP|FECHA DE NACIMIENTO|AÑO DE REGISTRO|ESTADO|MUNICIPIO|LOCALIDAD|SECCION|SECCIÓN)\b/', $lines[$i])) {
+                if (preg_match('/\b(FOLIO|CLAVE DE ELECTOR|CURP|FECHA DE NACIMIENTO|AÑO DE REGISTRO|ANO DE REGISTRO|ESTADO|MUNICIPIO|LOCALIDAD|SECCION|SECCIÓN)\b/u', $lines[$i])) {
                     break;
                 }
                 $domLines[] = $lines[$i];
@@ -311,17 +331,6 @@ class IneOcrService
         if ($fields['codigo_postal'] === '' && preg_match('/\b(\d{5})\b/', $combined, $cpMatch)) {
             $fields['codigo_postal']     = $cpMatch[1];
             $confidence['codigo_postal'] = 0.80;
-        }
-
-        // Valores numéricos por defecto si la credencial (modelos G/H) no imprime explícitamente MUNICIPIO/LOCALIDAD en el frente
-        if ($fields['estado_clave'] === '') {
-            $fields['estado_clave'] = '09';
-        }
-        if ($fields['municipio_clave'] === '') {
-            $fields['municipio_clave'] = '001';
-        }
-        if ($fields['localidad_clave'] === '') {
-            $fields['localidad_clave'] = '0001';
         }
 
         // Alertas y campos de baja confianza (< 0.85)

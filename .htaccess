@@ -1,0 +1,61 @@
+# ==============================================================================
+# Red Ciudadana de Talentos — Enrutamiento para Hostinger (public_html/activistas/)
+# Conservando los nombres de carpetas locales: /backend, /app-activista, /panel
+# ==============================================================================
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    Options +FollowSymlinks
+    RewriteEngine On
+    RewriteBase /
+
+    # Pasar encabezado Authorization a PHP (Bearer Token)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # 1. SEGURIDAD: Bloquear acceso web directo a archivos internos de /backend
+    # (incluyendo .env, writable/uploads con fotos INE, app y vendor)
+    RewriteRule ^backend/(?!public/) - [F,L]
+    RewriteRule (^|/)\.env - [F,L]
+
+    # 2. BACKEND API (/api/v1/...) -> /backend/public/index.php
+    RewriteRule ^api/?$ backend/public/index.php [L,QSA]
+    RewriteRule ^api/(.*)$ backend/public/index.php/$1 [L,NC,QSA]
+
+    # 3. PANEL DE ADMINISTRACIÓN (/panel/...)
+    # Redirigir /panel sin barra final a /panel/
+    RewriteRule ^panel$ /panel/ [R=301,L]
+
+    # Si se subió la carpeta panel/dist/:
+    RewriteCond %{DOCUMENT_ROOT}/panel/dist/$1 -f
+    RewriteRule ^panel/(.*)$ panel/dist/$1 [L]
+
+    RewriteCond %{DOCUMENT_ROOT}/panel/dist/index.html -f
+    RewriteRule ^panel/(.*)$ panel/dist/index.html [L]
+
+    # Si se subió el contenido de dist directamente dentro de panel/:
+    RewriteCond %{DOCUMENT_ROOT}/panel/$1 -f
+    RewriteRule ^panel/(.*)$ panel/$1 [L]
+
+    RewriteRule ^panel/(.*)$ panel/index.html [L]
+
+    # 4. APP DEL ACTIVISTA PWA (Raíz / -> /app-activista/dist/)
+    # Si se subió la carpeta app-activista/dist/:
+    RewriteCond %{REQUEST_URI} !^/app-activista/
+    RewriteCond %{DOCUMENT_ROOT}/app-activista/dist%{REQUEST_URI} -f
+    RewriteRule ^(.*)$ app-activista/dist/$1 [L]
+
+    RewriteCond %{REQUEST_URI} !^/app-activista/
+    RewriteCond %{DOCUMENT_ROOT}/app-activista/dist/index.html -f
+    RewriteRule ^(.*)$ app-activista/dist/index.html [L]
+
+    # Si se subió el contenido de dist directamente dentro de app-activista/:
+    RewriteCond %{REQUEST_URI} !^/app-activista/
+    RewriteCond %{DOCUMENT_ROOT}/app-activista%{REQUEST_URI} -f
+    RewriteRule ^(.*)$ app-activista/$1 [L]
+
+    RewriteCond %{REQUEST_URI} !^/app-activista/
+    RewriteRule ^(.*)$ app-activista/index.html [L]
+</IfModule>
+

@@ -8,7 +8,7 @@ use CodeIgniter\Database\Seeder;
 
 /**
  * Seeder inicial para Red Ciudadana de Talentos:
- * - Parámetros del sistema (Aviso de Privacidad LFPDPPP, metas por defecto)
+ * - Parámetros del sistema (Aviso de Privacidad LFPDPPP, metas por clasificación: 50 Conector, 50 Experto, 50 Vendedor)
  * - Usuarios iniciales: SuperAdmin, Consulta y Activista de demostración
  * (Las tablas de catálogos geográficos fueron eliminadas por requerimiento del cliente).
  */
@@ -37,13 +37,36 @@ class InitialSeeder extends Seeder
             ],
             [
                 'setting_key'   => 'meta_activista_default',
+                'setting_value' => '150',
+                'updated_at'    => $now,
+            ],
+            [
+                'setting_key'   => 'meta_conector_default',
+                'setting_value' => '50',
+                'updated_at'    => $now,
+            ],
+            [
+                'setting_key'   => 'meta_experto_default',
+                'setting_value' => '50',
+                'updated_at'    => $now,
+            ],
+            [
+                'setting_key'   => 'meta_vendedor_default',
                 'setting_value' => '50',
                 'updated_at'    => $now,
             ],
         ];
 
-        if ($this->db->table('settings')->countAllResults() === 0) {
-            $this->db->table('settings')->insertBatch($settings);
+        foreach ($settings as $row) {
+            $exists = $this->db->table('settings')->where('setting_key', $row['setting_key'])->countAllResults();
+            if ($exists === 0) {
+                $this->db->table('settings')->insert($row);
+            } else {
+                $this->db->table('settings')->where('setting_key', $row['setting_key'])->update([
+                    'setting_value' => $row['setting_value'],
+                    'updated_at'    => $now,
+                ]);
+            }
         }
 
         // 2. Usuarios iniciales
@@ -97,7 +120,10 @@ class InitialSeeder extends Seeder
                 'telefono_verificado_at' => $now,
                 'estado_id'              => 9,
                 'municipio_id'           => 1,
-                'meta'                   => 50,
+                'meta'                   => 150,
+                'meta_conector'          => 50,
+                'meta_experto'           => 50,
+                'meta_vendedor'          => 50,
                 'fecha_limite'           => date('Y-m-d', strtotime('+30 days')),
                 'status'                 => 'activo',
                 'created_at'             => $now,

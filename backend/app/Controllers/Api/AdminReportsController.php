@@ -30,6 +30,27 @@ class AdminReportsController extends BaseApiController
         $weekStart  = date('Y-m-d 00:00:00', strtotime('-7 days'));
         $cutoff48h  = date('Y-m-d H:i:s', strtotime('-48 hours'));
 
+        // Leer metas por clasificación configuradas en settings
+        $settingsRows = $this->db->table('settings')
+            ->whereIn('setting_key', [
+                'meta_conector_default',
+                'meta_experto_default',
+                'meta_vendedor_default',
+                'meta_activista_default',
+                'meta_global_default',
+            ])
+            ->get()
+            ->getResultArray();
+
+        $settingsMap = [];
+        foreach ($settingsRows as $sr) {
+            $settingsMap[(string) $sr['setting_key']] = (string) $sr['setting_value'];
+        }
+
+        $defConector = max(1, (int) ($settingsMap['meta_conector_default'] ?? 50));
+        $defExperto  = max(1, (int) ($settingsMap['meta_experto_default'] ?? 50));
+        $defVendedor = max(1, (int) ($settingsMap['meta_vendedor_default'] ?? 50));
+
         $totalTalents = $this->db->table('talents')->where('deleted_at IS NULL')->countAllResults();
         $todayTalents = $this->db->table('talents')->where('deleted_at IS NULL')->where('created_at >=', $todayStart)->countAllResults();
         $weekTalents  = $this->db->table('talents')->where('deleted_at IS NULL')->where('created_at >=', $weekStart)->countAllResults();
@@ -70,20 +91,65 @@ class AdminReportsController extends BaseApiController
             ];
         }
 
-        $metaGlobal      = 0;
-        $ranking         = [];
-        $inactivos48     = [];
-        $semaforoSummary = ['verde' => 0, 'amarillo' => 0, 'rojo' => 0];
+        // Conteo por activista y clasificación (Conector, Experto, Vendedor)
+        $clasifByActivist = [];
+        $globalByClasif   = [
+            'Conector' => 0,
+            'Experto'  => 0,
+            'Vendedor' => 0,
+        ];
+        $clasifRows = $this->db->table('talents')
+            ->select('activist_id, clasificacion, COUNT(*) as total')
+            ->where('deleted_at IS NULL')
+            ->where('validacion !=', 'rechazado')
+            ->groupBy('activist_id, clasificacion')
+            ->get()
+            ->getResultArray();
+
+        foreach ($clasifRows as $clr) {
+            $aId = (int) $clr['activist_id'];
+            $cat = (string) ($clr['clasificacion'] ?? 'Conector');
+            $cnt = (int) $clr['total'];
+            if (!isset($clasifByActivist[$aId])) {
+                $clasifByActivist[$aId] = ['Conector' => 0, 'Experto' => 0, 'Vendedor' => 0];
+            }
+            if (isset($clasifByActivist[$aId][$cat])) {
+                $clasifByActivist[$aId][$cat] = $cnt;
+            }
+            if (isset($globalByClasif[$cat])) {
+                $globalByClasif[$cat] += $cnt;
+            }
+        }
+
+        $metaGlobal         = 0;
+        $metaGlobalConector = 0;
+        $metaGlobalExperto  = 0;
+        $metaGlobalVendedor = 0;
+        $ranking            = [];
+        $inactivos48        = [];
+        $semaforoSummary    = ['verde' => 0, 'amarillo' => 0, 'rojo' => 0];
 
         $nowTs = time();
 
         foreach ($activists as $act) {
-            $actId       = (int) $act['id'];
-            $meta        = max(1, (int) $act['meta']);
-            $metaGlobal += $meta;
+            $actId        = (int) $act['id'];
+            $metaConector = max(1, (int) ($act['meta_conector'] ?? $defConector));
+            $metaExperto  = max(1, (int) ($act['meta_experto'] ?? $defExperto));
+            $metaVendedor = max(1, (int) ($act['meta_vendedor'] ?? $defVendedor));
+            $meta         = $metaConector + $metaExperto + $metaVendedor;
+
+            $metaGlobal         += $meta;
+            $metaGlobalConector += $metaConector;
+            $metaGlobalExperto  += $metaExperto;
+            $metaGlobalVendedor += $metaVendedor;
+
             $registrados = $countsByActivist[$actId]['total'] ?? 0;
             $lastSync    = $countsByActivist[$actId]['last_sync'] ?? null;
             $porcentaje  = round(min(100, ($registrados / $meta) * 100), 1);
+
+            $conReg = $clasifByActivist[$actId]['Conector'] ?? 0;
+            $expReg = $clasifByActivist[$actId]['Experto'] ?? 0;
+            $venReg = $clasifByActivist[$actId]['Vendedor'] ?? 0;
 
             $createdTs   = !empty($act['created_at']) ? (int) strtotime((string) $act['created_at']) : ($nowTs - 86400);
             $deadlineTs  = !empty($act['fecha_limite']) ? (int) strtotime((string) $act['fecha_limite'] . ' 23:59:59') : ($nowTs + 86400 * 30);
@@ -101,18 +167,27 @@ class AdminReportsController extends BaseApiController
             $semaforoSummary[$semaforo]++;
 
             $item = [
-                'id'              => $actId,
-                'nombre_completo' => trim($act['nombre'] . ' ' . $act['ap_paterno'] . ' ' . ($act['ap_materno'] ?? '')),
-                'username'        => $act['username'],
-                'estado_nombre'   => 'Estado ' . str_pad((string) ($act['estado_id'] ?? 9), 2, '0', STR_PAD_LEFT),
-                'status'          => $act['status'],
-                'meta'            => $meta,
-                'registrados'     => $registrados,
-                'porcentaje'      => $porcentaje,
-                'ritmo_esperado'  => $expectedPct,
-                'semaforo'        => $semaforo,
-                'last_sync_at'    => $lastSync,
-                'fecha_limite'    => $act['fecha_limite'],
+                'id'                   => $actId,
+                'nombre_completo'      => trim($act['nombre'] . ' ' . $act['ap_paterno'] . ' ' . ($act['ap_materno'] ?? '')),
+                'username'             => $act['username'],
+                'estado_nombre'        => 'Estado ' . str_pad((string) ($act['estado_id'] ?? 9), 2, '0', STR_PAD_LEFT),
+                'status'               => $act['status'],
+                'meta'                 => $meta,
+                'meta_conector'        => $metaConector,
+                'meta_experto'         => $metaExperto,
+                'meta_vendedor'        => $metaVendedor,
+                'conector_registrados' => $conReg,
+                'experto_registrados'  => $expReg,
+                'vendedor_registrados' => $venReg,
+                'conector_porcentaje'  => round(min(100, ($conReg / $metaConector) * 100), 1),
+                'experto_porcentaje'   => round(min(100, ($expReg / $metaExperto) * 100), 1),
+                'vendedor_porcentaje'  => round(min(100, ($venReg / $metaVendedor) * 100), 1),
+                'registrados'          => $registrados,
+                'porcentaje'           => $porcentaje,
+                'ritmo_esperado'       => $expectedPct,
+                'semaforo'             => $semaforo,
+                'last_sync_at'         => $lastSync,
+                'fecha_limite'         => $act['fecha_limite'],
             ];
 
             $ranking[] = $item;
@@ -125,7 +200,10 @@ class AdminReportsController extends BaseApiController
         usort($ranking, static fn ($a, $b) => $b['registrados'] <=> $a['registrados']);
 
         if ($metaGlobal === 0) {
-            $metaGlobal = 2500;
+            $metaGlobal         = $defConector + $defExperto + $defVendedor;
+            $metaGlobalConector = $defConector;
+            $metaGlobalExperto  = $defExperto;
+            $metaGlobalVendedor = $defVendedor;
         }
         $porcentajeGlobal = round(min(100, ($totalTalents / $metaGlobal) * 100), 1);
 
@@ -141,16 +219,40 @@ class AdminReportsController extends BaseApiController
 
         return $this->apiResponse([
             'kpis' => [
-                'total'             => $totalTalents,
-                'hoy'               => $todayTalents,
-                'semana'            => $weekTalents,
-                'meta_global'       => $metaGlobal,
-                'porcentaje_global' => $porcentajeGlobal,
-                'validados'         => $byValidacion['validado'],
-                'pendientes'        => $byValidacion['pendiente'],
-                'observados'        => $byValidacion['observado'],
-                'rechazados'        => $byValidacion['rechazado'],
-                'total_activistas'  => count($activists),
+                'total'                  => $totalTalents,
+                'hoy'                    => $todayTalents,
+                'semana'                 => $weekTalents,
+                'meta_global'            => $metaGlobal,
+                'meta_por_activista'     => $defConector + $defExperto + $defVendedor,
+                'meta_conector_default'  => $defConector,
+                'meta_experto_default'   => $defExperto,
+                'meta_vendedor_default'  => $defVendedor,
+                'porcentaje_global'      => $porcentajeGlobal,
+                'validados'              => $byValidacion['validado'],
+                'pendientes'             => $byValidacion['pendiente'],
+                'observados'             => $byValidacion['observado'],
+                'rechazados'             => $byValidacion['rechazado'],
+                'total_activistas'       => count($activists),
+            ],
+            'clasificaciones_resumen' => [
+                'Conector' => [
+                    'registrados'        => $globalByClasif['Conector'],
+                    'meta_por_activista' => $defConector,
+                    'meta_global'        => $metaGlobalConector,
+                    'porcentaje'         => round(min(100, ($globalByClasif['Conector'] / max(1, $metaGlobalConector)) * 100), 1),
+                ],
+                'Experto' => [
+                    'registrados'        => $globalByClasif['Experto'],
+                    'meta_por_activista' => $defExperto,
+                    'meta_global'        => $metaGlobalExperto,
+                    'porcentaje'         => round(min(100, ($globalByClasif['Experto'] / max(1, $metaGlobalExperto)) * 100), 1),
+                ],
+                'Vendedor' => [
+                    'registrados'        => $globalByClasif['Vendedor'],
+                    'meta_por_activista' => $defVendedor,
+                    'meta_global'        => $metaGlobalVendedor,
+                    'porcentaje'         => round(min(100, ($globalByClasif['Vendedor'] / max(1, $metaGlobalVendedor)) * 100), 1),
+                ],
             ],
             'semaforo_resumen' => $semaforoSummary,
             'ranking'          => $ranking,
@@ -667,7 +769,14 @@ class AdminReportsController extends BaseApiController
     public function getSettings(): ResponseInterface
     {
         $rows = $this->db->table('settings')->get()->getResultArray();
-        $map  = [];
+        $map  = [
+            'aviso_privacidad_version' => '1.0',
+            'meta_global_default'      => '2500',
+            'meta_conector_default'    => '50',
+            'meta_experto_default'     => '50',
+            'meta_vendedor_default'    => '50',
+            'meta_activista_default'   => '150',
+        ];
         foreach ($rows as $r) {
             $map[(string) $r['setting_key']] = $r['setting_value'];
         }
@@ -685,6 +794,27 @@ class AdminReportsController extends BaseApiController
 
         $input = $this->inputData();
         $now   = date('Y-m-d H:i:s');
+
+        if (isset($input['meta_conector_default']) || isset($input['meta_experto_default']) || isset($input['meta_vendedor_default'])) {
+            $con = max(1, (int) ($input['meta_conector_default'] ?? 50));
+            $exp = max(1, (int) ($input['meta_experto_default'] ?? 50));
+            $ven = max(1, (int) ($input['meta_vendedor_default'] ?? 50));
+            $input['meta_conector_default']  = (string) $con;
+            $input['meta_experto_default']   = (string) $exp;
+            $input['meta_vendedor_default']  = (string) $ven;
+            $input['meta_activista_default'] = (string) ($con + $exp + $ven);
+
+            // Actualizar metas por clasificación de los activistas activos
+            $this->db->table('activists')
+                ->where('deleted_at IS NULL')
+                ->update([
+                    'meta_conector' => $con,
+                    'meta_experto'  => $exp,
+                    'meta_vendedor' => $ven,
+                    'meta'          => $con + $exp + $ven,
+                    'updated_at'    => $now,
+                ]);
+        }
 
         foreach ($input as $key => $val) {
             if (!is_string($key) || !is_scalar($val)) {

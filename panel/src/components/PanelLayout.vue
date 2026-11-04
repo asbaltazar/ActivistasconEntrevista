@@ -8,8 +8,8 @@
             RC
           </div>
           <div>
-            <h1 class="font-bold text-sm leading-tight text-white">Red Ciudadana</h1>
-            <p class="text-xs text-slate-400">Panel de Control Nacional</p>
+            <h1 class="font-bold text-sm leading-tight text-white">Red Municipal de Talentos</h1>
+            <p class="text-xs text-slate-400">Panel de Control</p>
           </div>
         </div>
       </div>

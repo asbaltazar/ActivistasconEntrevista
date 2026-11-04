@@ -1,8 +1,5 @@
-# Bloquear acceso HTTP directo a todo el directorio backend/ (protección de .env, app/, vendor/ y writable/uploads/)
-<IfModule authz_core_module>
-    Require all denied
-</IfModule>
-<IfModule !authz_core_module>
-    Deny from all
-</IfModule>
+Options -Indexes
 
+<FilesMatch "^\.env|composer\.(json|lock)|spark$">
+    Require all denied
+</FilesMatch>

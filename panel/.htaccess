@@ -1,0 +1,21 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /panel/
+
+    # Si existe la subcarpeta dist/, servir archivos desde dist/
+    RewriteCond %{REQUEST_URI} !^/panel/dist/
+    RewriteCond %{DOCUMENT_ROOT}/panel/dist/$1 -f
+    RewriteRule ^(.*)$ dist/$1 [L]
+
+    RewriteCond %{REQUEST_URI} !^/panel/dist/
+    RewriteCond %{DOCUMENT_ROOT}/panel/dist/index.html -f
+    RewriteRule ^(.*)$ dist/index.html [L]
+
+    # Si los archivos compilados están directamente en /panel/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule . /panel/index.html [L]
+</IfModule>
+
