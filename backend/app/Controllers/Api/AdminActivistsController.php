@@ -10,11 +10,12 @@ class AdminActivistsController extends BaseApiController
 {
     public function index(): ResponseInterface
     {
-        $search   = trim((string) ($this->request->getGet('q') ?? ''));
-        $status   = trim((string) ($this->request->getGet('status') ?? ''));
-        $estadoId = (int) ($this->request->getGet('estado_id') ?? 0);
-        $page     = max(1, (int) ($this->request->getGet('page') ?? 1));
-        $perPage  = min(100, max(10, (int) ($this->request->getGet('per_page') ?? 25)));
+        $search        = trim((string) ($this->request->getGet('q') ?? ''));
+        $status        = trim((string) ($this->request->getGet('status') ?? ''));
+        $estadoId      = (int) ($this->request->getGet('estado_id') ?? 0);
+        $regionTrabajo = (int) ($this->request->getGet('region_trabajo') ?? 0);
+        $page          = max(1, (int) ($this->request->getGet('page') ?? 1));
+        $perPage       = min(100, max(10, (int) ($this->request->getGet('per_page') ?? 25)));
 
         $builder = $this->db->table('activists a')
             ->select('a.*, u.username, u.email, u.last_login_at, u.must_change_password')
@@ -27,12 +28,16 @@ class AdminActivistsController extends BaseApiController
         if ($estadoId > 0) {
             $builder->where('a.estado_id', $estadoId);
         }
+        if ($regionTrabajo > 0) {
+            $builder->where('a.region_trabajo', $regionTrabajo);
+        }
         if ($search !== '') {
             $builder->groupStart()
                 ->like('a.nombre', $search)
                 ->orLike('a.ap_paterno', $search)
                 ->orLike('a.ap_materno', $search)
                 ->orLike('a.telefono', $search)
+                ->orLike('a.domicilio', $search)
                 ->orLike('u.username', $search)
                 ->groupEnd();
         }
@@ -106,11 +111,13 @@ class AdminActivistsController extends BaseApiController
                 'ap_materno'             => $row['ap_materno'],
                 'nombre_completo'        => trim($row['nombre'] . ' ' . $row['ap_paterno'] . ' ' . ($row['ap_materno'] ?? '')),
                 'telefono'               => (string) $row['telefono'],
+                'domicilio'              => $row['domicilio'] ?? null,
                 'telefono_verificado_at' => $row['telefono_verificado_at'],
                 'estado_id'              => (int) $row['estado_id'],
                 'estado_nombre'          => 'Estado ' . str_pad((string) $row['estado_id'], 2, '0', STR_PAD_LEFT),
                 'municipio_id'           => $row['municipio_id'] !== null ? (int) $row['municipio_id'] : null,
                 'municipio_nombre'       => $row['municipio_id'] !== null ? 'Municipio ' . str_pad((string) $row['municipio_id'], 3, '0', STR_PAD_LEFT) : null,
+                'region_trabajo'         => (int) ($row['region_trabajo'] ?? 1),
                 'meta'                   => $meta,
                 'meta_conector'          => $metaConector,
                 'meta_experto'           => $metaExperto,
@@ -143,19 +150,21 @@ class AdminActivistsController extends BaseApiController
             return $deny;
         }
 
-        $input       = $this->inputData();
-        $nombre      = trim((string) ($input['nombre'] ?? ''));
-        $apPaterno   = trim((string) ($input['ap_paterno'] ?? ''));
-        $apMaterno   = trim((string) ($input['ap_materno'] ?? ''));
-        $telefono    = (string) preg_replace('/\D/', '', (string) ($input['telefono'] ?? ''));
-        $email       = !empty($input['email']) ? trim((string) $input['email']) : null;
-        $estadoId     = (int) ($input['estado_id'] ?? 9);
-        $municipioId  = !empty($input['municipio_id']) ? (int) $input['municipio_id'] : null;
-        $metaConector = max(1, (int) ($input['meta_conector'] ?? 50));
-        $metaExperto  = max(1, (int) ($input['meta_experto'] ?? 50));
-        $metaVendedor = max(1, (int) ($input['meta_vendedor'] ?? 50));
-        $meta         = $metaConector + $metaExperto + $metaVendedor;
-        $fechaLimite  = !empty($input['fecha_limite']) ? trim((string) $input['fecha_limite']) : date('Y-m-d', strtotime('+30 days'));
+        $input         = $this->inputData();
+        $nombre        = trim((string) ($input['nombre'] ?? ''));
+        $apPaterno     = trim((string) ($input['ap_paterno'] ?? ''));
+        $apMaterno     = trim((string) ($input['ap_materno'] ?? ''));
+        $telefono      = (string) preg_replace('/\D/', '', (string) ($input['telefono'] ?? ''));
+        $domicilio     = trim((string) ($input['domicilio'] ?? ''));
+        $email         = !empty($input['email']) ? trim((string) $input['email']) : null;
+        $estadoId      = (int) ($input['estado_id'] ?? 24);
+        $municipioId   = !empty($input['municipio_id']) ? (int) $input['municipio_id'] : null;
+        $regionTrabajo = max(1, (int) ($input['region_trabajo'] ?? 1));
+        $metaConector  = max(1, (int) ($input['meta_conector'] ?? 50));
+        $metaExperto   = max(1, (int) ($input['meta_experto'] ?? 50));
+        $metaVendedor  = max(1, (int) ($input['meta_vendedor'] ?? 50));
+        $meta          = $metaConector + $metaExperto + $metaVendedor;
+        $fechaLimite   = !empty($input['fecha_limite']) ? trim((string) $input['fecha_limite']) : date('Y-m-d', strtotime('+30 days'));
 
         if ($nombre === '' || $apPaterno === '') {
             return $this->apiResponse(null, null, ['El nombre y apellido paterno son obligatorios.'], 422);
@@ -202,9 +211,11 @@ class AdminActivistsController extends BaseApiController
             'ap_paterno'             => $apPaterno,
             'ap_materno'             => $apMaterno !== '' ? $apMaterno : null,
             'telefono'               => $telefono,
+            'domicilio'              => $domicilio !== '' ? $domicilio : null,
             'telefono_verificado_at' => $now,
             'estado_id'              => $estadoId,
             'municipio_id'           => $municipioId,
+            'region_trabajo'         => $regionTrabajo,
             'meta'                   => $meta,
             'meta_conector'          => $metaConector,
             'meta_experto'           => $metaExperto,
@@ -216,7 +227,12 @@ class AdminActivistsController extends BaseApiController
         ]);
         $activistId = (int) $this->db->insertID();
 
-        $this->logAudit('activist.create', 'activists', $activistId, ['username' => $username, 'telefono' => $telefono, 'meta' => $meta]);
+        $this->logAudit('activist.create', 'activists', $activistId, [
+            'username'       => $username,
+            'telefono'       => $telefono,
+            'region_trabajo' => $regionTrabajo,
+            'meta'           => $meta,
+        ]);
 
         return $this->apiResponse([
             'id'                 => $activistId,
@@ -264,27 +280,35 @@ class AdminActivistsController extends BaseApiController
             }
         }
 
-        $metaConector = isset($input['meta_conector']) ? max(1, (int) $input['meta_conector']) : (int) ($activist['meta_conector'] ?? 50);
-        $metaExperto  = isset($input['meta_experto']) ? max(1, (int) $input['meta_experto']) : (int) ($activist['meta_experto'] ?? 50);
-        $metaVendedor = isset($input['meta_vendedor']) ? max(1, (int) $input['meta_vendedor']) : (int) ($activist['meta_vendedor'] ?? 50);
+        $metaConector  = isset($input['meta_conector']) ? max(1, (int) $input['meta_conector']) : (int) ($activist['meta_conector'] ?? 50);
+        $metaExperto   = isset($input['meta_experto']) ? max(1, (int) $input['meta_experto']) : (int) ($activist['meta_experto'] ?? 50);
+        $metaVendedor  = isset($input['meta_vendedor']) ? max(1, (int) $input['meta_vendedor']) : (int) ($activist['meta_vendedor'] ?? 50);
+        $regionTrabajo = isset($input['region_trabajo']) ? max(1, (int) $input['region_trabajo']) : (int) ($activist['region_trabajo'] ?? 1);
 
         $updates = [
-            'nombre'        => isset($input['nombre']) ? trim((string) $input['nombre']) : $activist['nombre'],
-            'ap_paterno'    => isset($input['ap_paterno']) ? trim((string) $input['ap_paterno']) : $activist['ap_paterno'],
-            'ap_materno'    => array_key_exists('ap_materno', $input) ? trim((string) $input['ap_materno']) : $activist['ap_materno'],
-            'telefono'      => $newTelefono,
-            'estado_id'     => isset($input['estado_id']) ? (int) $input['estado_id'] : (int) $activist['estado_id'],
-            'municipio_id'  => array_key_exists('municipio_id', $input) ? (!empty($input['municipio_id']) ? (int) $input['municipio_id'] : null) : $activist['municipio_id'],
-            'meta'          => $metaConector + $metaExperto + $metaVendedor,
-            'meta_conector' => $metaConector,
-            'meta_experto'  => $metaExperto,
-            'meta_vendedor' => $metaVendedor,
-            'fecha_limite'  => array_key_exists('fecha_limite', $input) ? $input['fecha_limite'] : $activist['fecha_limite'],
-            'status'        => isset($input['status']) ? (string) $input['status'] : $activist['status'],
-            'updated_at'    => $now,
+            'nombre'         => isset($input['nombre']) ? trim((string) $input['nombre']) : $activist['nombre'],
+            'ap_paterno'     => isset($input['ap_paterno']) ? trim((string) $input['ap_paterno']) : $activist['ap_paterno'],
+            'ap_materno'     => array_key_exists('ap_materno', $input) ? trim((string) $input['ap_materno']) : $activist['ap_materno'],
+            'telefono'       => $newTelefono,
+            'domicilio'      => array_key_exists('domicilio', $input) ? (trim((string) $input['domicilio']) !== '' ? trim((string) $input['domicilio']) : null) : ($activist['domicilio'] ?? null),
+            'estado_id'      => isset($input['estado_id']) ? (int) $input['estado_id'] : (int) $activist['estado_id'],
+            'municipio_id'   => array_key_exists('municipio_id', $input) ? (!empty($input['municipio_id']) ? (int) $input['municipio_id'] : null) : $activist['municipio_id'],
+            'region_trabajo' => $regionTrabajo,
+            'meta'           => $metaConector + $metaExperto + $metaVendedor,
+            'meta_conector'  => $metaConector,
+            'meta_experto'   => $metaExperto,
+            'meta_vendedor'  => $metaVendedor,
+            'fecha_limite'   => array_key_exists('fecha_limite', $input) ? $input['fecha_limite'] : $activist['fecha_limite'],
+            'status'         => isset($input['status']) ? (string) $input['status'] : $activist['status'],
+            'updated_at'     => $now,
         ];
 
         $this->db->table('activists')->where('id', $id)->update($updates);
+
+        // Mantener los Talentos ligados a la Región de Trabajo actual del Activista que los registró
+        $this->db->table('talents')
+            ->where('activist_id', $id)
+            ->update(['region_trabajo' => $regionTrabajo]);
 
         if (isset($input['status'])) {
             $userStatus = $input['status'] === 'suspendido' ? 'suspendido' : 'activo';

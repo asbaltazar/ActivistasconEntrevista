@@ -74,7 +74,7 @@
               <th class="py-3 px-4">Clave Elector / CURP</th>
               <th class="py-3 px-4">Domicilio y Claves INE</th>
               <th class="py-3 px-4">Teléfono</th>
-              <th class="py-3 px-4">Activista</th>
+              <th class="py-3 px-4">Activista / Región</th>
               <th class="py-3 px-4">Validación</th>
               <th class="py-3 px-4 text-right">Detalle / Acción</th>
             </tr>
@@ -112,7 +112,10 @@
                 {{ t.telefono }}
               </td>
               <td class="py-3 px-4 text-xs text-slate-600">
-                {{ t.activist_nombre || `ID #${t.activist_id}` }}
+                <div class="font-semibold text-slate-800">{{ t.activist_nombre || `ID #${t.activist_id}` }}</div>
+                <span class="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                  Región {{ t.region_trabajo ?? 1 }}
+                </span>
               </td>
               <td class="py-3 px-4">
                 <span
@@ -163,7 +166,7 @@
               Expediente de Talento #{{ selectedTalent.id }} — {{ selectedTalent.nombre_completo }}
             </h3>
             <p class="text-xs text-slate-500">
-              Consentimiento LFPDPPP: {{ selectedTalent.consentimiento_at }} (Versión {{ selectedTalent.aviso_version }}) · UUID: {{ selectedTalent.uuid }}
+              Activista: <strong>{{ selectedTalent.activist_nombre }}</strong> (Región de Trabajo <strong>#{{ selectedTalent.region_trabajo ?? 1 }}</strong>) · Consentimiento LFPDPPP: {{ selectedTalent.consentimiento_at }} (Versión {{ selectedTalent.aviso_version }}) · UUID: {{ selectedTalent.uuid }}
             </p>
           </div>
           <button type="button" class="text-slate-400 hover:text-slate-700 text-xl cursor-pointer" @click="selectedTalent = null">

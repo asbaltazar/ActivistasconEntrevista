@@ -230,9 +230,16 @@ class SyncController extends BaseApiController
             $warnings[] = 'El número de teléfono ya está asociado a otro Talento.';
         }
 
+        $actRow        = $this->currentActivist();
+        if ($actRow === null || (int) ($actRow['id'] ?? 0) !== $activistId) {
+            $actRow = $this->db->table('activists')->where('id', $activistId)->get()->getRowArray();
+        }
+        $regionTrabajo = (int) ($actRow['region_trabajo'] ?? 1);
+
         $rowPayload = [
             'uuid'               => $uuid,
             'activist_id'        => $activistId,
+            'region_trabajo'     => $regionTrabajo,
             'clasificacion'      => $clasificacion,
             'pregunta_1_texto'   => $pregunta1Txt,
             'audio_pregunta_1'   => $audioPregunta1,

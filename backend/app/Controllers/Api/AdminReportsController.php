@@ -170,6 +170,8 @@ class AdminReportsController extends BaseApiController
                 'id'                   => $actId,
                 'nombre_completo'      => trim($act['nombre'] . ' ' . $act['ap_paterno'] . ' ' . ($act['ap_materno'] ?? '')),
                 'username'             => $act['username'],
+                'domicilio'            => $act['domicilio'] ?? null,
+                'region_trabajo'       => (int) ($act['region_trabajo'] ?? 1),
                 'estado_nombre'        => 'Estado ' . str_pad((string) ($act['estado_id'] ?? 9), 2, '0', STR_PAD_LEFT),
                 'status'               => $act['status'],
                 'meta'                 => $meta,
@@ -262,113 +264,267 @@ class AdminReportsController extends BaseApiController
     }
 
     /**
+     * Parsea un filtro que puede venir como entero, cadena separada por comas ("1,2,3") o arreglo ([1, 2]).
+     * Si viene vacío o "todos", devuelve arreglo vacío (= todos).
+     *
+     * @param mixed $raw
+     * @return list<int>
+     */
+    private function parseMultiIntList($raw): array
+    {
+        if ($raw === null || $raw === '' || $raw === 'todos' || $raw === 'all') {
+            return [];
+        }
+        $items = is_array($raw) ? $raw : explode(',', (string) $raw);
+        $out   = [];
+        foreach ($items as $v) {
+            $n = (int) trim((string) $v);
+            if ($n > 0 && !in_array($n, $out, true)) {
+                $out[] = $n;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Aplica filtros de uno/varios/todos los Activistas y una/varias/todas las Regiones de Trabajo.
+     *
+     * @param \CodeIgniter\Database\BaseBuilder $builder
+     * @param list<int>                         $activistIds
+     * @param list<int>                         $regiones
+     */
+    private function applyActivistAndRegionFilters(
+        $builder,
+        array $activistIds,
+        array $regiones,
+        string $talentAlias = 't',
+        string $activistAlias = 'a'
+    ): void {
+        if (count($activistIds) > 0) {
+            $builder->whereIn("{$talentAlias}.activist_id", $activistIds);
+        }
+        if (count($regiones) > 0) {
+            $inList = implode(',', array_map('intval', $regiones));
+            $builder->where("COALESCE({$talentAlias}.region_trabajo, {$activistAlias}.region_trabajo, 1) IN ({$inList})", null, false);
+        }
+    }
+
+    /**
+     * Obtiene catálogo de activistas y regiones de trabajo disponibles para los selectores de filtros.
+     *
+     * @return array{activists: list<array<string, mixed>>, regiones: list<int>}
+     */
+    private function getFilterCatalogs(): array
+    {
+        $actRows = $this->db->table('activists a')
+            ->select('a.id, a.nombre, a.ap_paterno, a.ap_materno, a.region_trabajo, a.domicilio, u.username')
+            ->join('users u', 'u.id = a.user_id', 'left')
+            ->where('a.deleted_at IS NULL')
+            ->orderBy('a.region_trabajo', 'ASC')
+            ->orderBy('a.nombre', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        $activists = [];
+        $regSet    = [];
+
+        foreach ($actRows as $ar) {
+            $reg = max(1, (int) ($ar['region_trabajo'] ?? 1));
+            $regSet[$reg] = true;
+            $activists[] = [
+                'id'              => (int) $ar['id'],
+                'nombre_completo' => trim($ar['nombre'] . ' ' . $ar['ap_paterno'] . ' ' . ($ar['ap_materno'] ?? '')),
+                'username'        => (string) ($ar['username'] ?? ''),
+                'region_trabajo'  => $reg,
+                'domicilio'       => $ar['domicilio'] ?? null,
+            ];
+        }
+
+        $talRegRows = $this->db->table('talents')
+            ->select('DISTINCT region_trabajo', false)
+            ->where('deleted_at IS NULL')
+            ->where('region_trabajo IS NOT NULL')
+            ->get()
+            ->getResultArray();
+
+        foreach ($talRegRows as $tr) {
+            $r = (int) ($tr['region_trabajo'] ?? 0);
+            if ($r > 0) {
+                $regSet[$r] = true;
+            }
+        }
+
+        $regiones = array_keys($regSet);
+        sort($regiones, SORT_NUMERIC);
+
+        return [
+            'activists' => $activists,
+            'regiones'  => $regiones,
+        ];
+    }
+
+    /**
      * GET /api/v1/admin/reports/{tipo} (RF-P5: Reportes)
      */
     public function reports(string $tipo): ResponseInterface
     {
         $tipo        = strtolower(trim($tipo));
         $currentYear = (int) date('Y');
+        $activistIds = $this->parseMultiIntList($this->request->getGet('activist_ids') ?? $this->request->getGet('activist_id'));
+        $regiones    = $this->parseMultiIntList($this->request->getGet('regiones') ?? $this->request->getGet('region_trabajo'));
+        $catalogs    = $this->getFilterCatalogs();
+        $metaBase    = [
+            'tipo'         => $tipo,
+            'activist_ids' => $activistIds,
+            'regiones'     => $regiones,
+            'catalogs'     => $catalogs,
+        ];
 
         switch ($tipo) {
             case 'clasificacion':
-                $rows = $this->db->table('talents')
-                    ->select('clasificacion, COUNT(id) as total, SUM(CASE WHEN validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->where('deleted_at IS NULL')
-                    ->groupBy('clasificacion')
+                $builder = $this->db->table('talents t')
+                    ->select('t.clasificacion, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('t.clasificacion')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
 
             case 'activista':
-                $rows = $this->db->table('activists a')
-                    ->select('a.id, a.nombre, a.ap_paterno, a.meta, a.status, COUNT(t.id) as registrados, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                $builder = $this->db->table('activists a')
+                    ->select('a.id, CONCAT_WS(\' \', a.nombre, a.ap_paterno, a.ap_materno) as activista, a.region_trabajo, a.domicilio, a.meta, a.status, COUNT(t.id) as registrados, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
                     ->join('talents t', 't.activist_id = a.id AND t.deleted_at IS NULL', 'left')
-                    ->where('a.deleted_at IS NULL')
-                    ->groupBy('a.id, a.nombre, a.ap_paterno, a.meta, a.status')
+                    ->where('a.deleted_at IS NULL');
+                if (count($activistIds) > 0) {
+                    $builder->whereIn('a.id', $activistIds);
+                }
+                if (count($regiones) > 0) {
+                    $builder->whereIn('a.region_trabajo', $regiones);
+                }
+                $rows = $builder
+                    ->groupBy('a.id, a.nombre, a.ap_paterno, a.ap_materno, a.region_trabajo, a.domicilio, a.meta, a.status')
                     ->orderBy('registrados', 'DESC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
+
+            case 'region':
+                $builder = $this->db->table('talents t')
+                    ->select('COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, COUNT(DISTINCT t.activist_id) as activistas, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('COALESCE(t.region_trabajo, a.region_trabajo, 1)')
+                    ->orderBy('region_trabajo', 'ASC')
+                    ->get()
+                    ->getResultArray();
+                return $this->apiResponse($rows, $metaBase);
 
             case 'territorial':
             case 'estado':
-                $rows = $this->db->table('talents t')
-                    ->select('t.estado_clave, t.municipio_clave, t.localidad_clave, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.estado_clave, t.municipio_clave, t.localidad_clave')
+                $builder = $this->db->table('talents t')
+                    ->select('t.estado_clave, t.municipio_clave, t.localidad_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('t.estado_clave, t.municipio_clave, t.localidad_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1)')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
 
             case 'seccion':
             case 'cobertura':
-                $rows = $this->db->table('talents t')
-                    ->select('t.seccion, t.estado_clave, t.municipio_clave, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
-                    ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.seccion, t.estado_clave, t.municipio_clave')
+                $builder = $this->db->table('talents t')
+                    ->select('t.seccion, t.estado_clave, t.municipio_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, COUNT(t.id) as total, SUM(CASE WHEN t.validacion = \'validado\' THEN 1 ELSE 0 END) as validados')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('t.seccion, t.estado_clave, t.municipio_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1)')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
 
             case 'cp':
-                $rows = $this->db->table('talents t')
-                    ->select('t.codigo_postal, t.estado_clave, COUNT(t.id) as total')
-                    ->where('t.deleted_at IS NULL')
-                    ->groupBy('t.codigo_postal, t.estado_clave')
+                $builder = $this->db->table('talents t')
+                    ->select('t.codigo_postal, t.estado_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, COUNT(t.id) as total')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('t.codigo_postal, t.estado_clave, COALESCE(t.region_trabajo, a.region_trabajo, 1)')
                     ->orderBy('total', 'DESC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
 
             case 'fecha':
-                $rows = $this->db->table('talents')
-                    ->select('SUBSTR(created_at, 1, 10) as fecha, COUNT(*) as total')
-                    ->where('deleted_at IS NULL')
-                    ->groupBy('SUBSTR(created_at, 1, 10)')
+                $builder = $this->db->table('talents t')
+                    ->select('SUBSTR(t.created_at, 1, 10) as fecha, COUNT(*) as total')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
+                    ->groupBy('SUBSTR(t.created_at, 1, 10)')
                     ->orderBy('fecha', 'ASC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo]);
+                return $this->apiResponse($rows, $metaBase);
 
             case 'vigencias':
-                $rows = $this->db->table('talents t')
-                    ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.clasificacion, t.seccion, t.vigencia, t.telefono, t.estado_clave')
+                $builder = $this->db->table('talents t')
+                    ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.clasificacion, t.seccion, t.vigencia, t.telefono, t.estado_clave, CONCAT_WS(\' \', a.nombre, a.ap_paterno, a.ap_materno) as activista, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
                     ->where('t.deleted_at IS NULL')
-                    ->where('t.vigencia <', $currentYear)
+                    ->where('t.vigencia <', $currentYear);
+                $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+                $rows = $builder
                     ->orderBy('t.vigencia', 'ASC')
                     ->get()
                     ->getResultArray();
-                return $this->apiResponse($rows, ['tipo' => $tipo, 'current_year' => $currentYear]);
+                return $this->apiResponse($rows, array_merge($metaBase, ['current_year' => $currentYear]));
 
             case 'duplicados':
-                $dupPhones = $this->db->table('talents')
-                    ->select('telefono, COUNT(*) as repeticiones')
-                    ->where('deleted_at IS NULL')
-                    ->groupBy('telefono')
+                $dupPhonesBuilder = $this->db->table('talents t')
+                    ->select('t.telefono, COUNT(*) as repeticiones')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL');
+                $this->applyActivistAndRegionFilters($dupPhonesBuilder, $activistIds, $regiones);
+                $dupPhones = $dupPhonesBuilder
+                    ->groupBy('t.telefono')
                     ->having('COUNT(*) >', 1)
                     ->get()
                     ->getResultArray();
 
-                $dupCurps = $this->db->table('talents')
-                    ->select('curp_hash, COUNT(*) as repeticiones')
-                    ->where('deleted_at IS NULL')
-                    ->where('curp_hash IS NOT NULL')
-                    ->groupBy('curp_hash')
+                $dupCurpsBuilder = $this->db->table('talents t')
+                    ->select('t.curp_hash, COUNT(*) as repeticiones')
+                    ->join('activists a', 'a.id = t.activist_id', 'left')
+                    ->where('t.deleted_at IS NULL')
+                    ->where('t.curp_hash IS NOT NULL');
+                $this->applyActivistAndRegionFilters($dupCurpsBuilder, $activistIds, $regiones);
+                $dupCurps = $dupCurpsBuilder
+                    ->groupBy('t.curp_hash')
                     ->having('COUNT(*) >', 1)
                     ->get()
                     ->getResultArray();
 
                 $groups = [];
                 foreach ($dupPhones as $dp) {
-                    $items = $this->db->table('talents')
-                        ->select('id, uuid, nombre, ap_paterno, ap_materno, telefono, seccion, created_at')
-                        ->where('telefono', $dp['telefono'])
-                        ->where('deleted_at IS NULL')
-                        ->get()
-                        ->getResultArray();
+                    $itemsBuilder = $this->db->table('talents t')
+                        ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.telefono, t.seccion, CONCAT_WS(\' \', a.nombre, a.ap_paterno, a.ap_materno) as activista, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, t.created_at')
+                        ->join('activists a', 'a.id = t.activist_id', 'left')
+                        ->where('t.telefono', $dp['telefono'])
+                        ->where('t.deleted_at IS NULL');
+                    $this->applyActivistAndRegionFilters($itemsBuilder, $activistIds, $regiones);
+                    $items = $itemsBuilder->get()->getResultArray();
                     $groups[] = [
                         'criterio'     => 'Teléfono duplicado (' . $dp['telefono'] . ')',
                         'repeticiones' => (int) $dp['repeticiones'],
@@ -376,12 +532,13 @@ class AdminReportsController extends BaseApiController
                     ];
                 }
                 foreach ($dupCurps as $dc) {
-                    $items = $this->db->table('talents')
-                        ->select('id, uuid, nombre, ap_paterno, ap_materno, telefono, seccion, created_at')
-                        ->where('curp_hash', $dc['curp_hash'])
-                        ->where('deleted_at IS NULL')
-                        ->get()
-                        ->getResultArray();
+                    $itemsBuilder = $this->db->table('talents t')
+                        ->select('t.id, t.uuid, t.nombre, t.ap_paterno, t.ap_materno, t.telefono, t.seccion, CONCAT_WS(\' \', a.nombre, a.ap_paterno, a.ap_materno) as activista, COALESCE(t.region_trabajo, a.region_trabajo, 1) as region_trabajo, t.created_at')
+                        ->join('activists a', 'a.id = t.activist_id', 'left')
+                        ->where('t.curp_hash', $dc['curp_hash'])
+                        ->where('t.deleted_at IS NULL');
+                    $this->applyActivistAndRegionFilters($itemsBuilder, $activistIds, $regiones);
+                    $items = $itemsBuilder->get()->getResultArray();
                     $groups[] = [
                         'criterio'     => 'CURP duplicada',
                         'repeticiones' => (int) $dc['repeticiones'],
@@ -389,7 +546,7 @@ class AdminReportsController extends BaseApiController
                     ];
                 }
 
-                return $this->apiResponse($groups, ['tipo' => $tipo]);
+                return $this->apiResponse($groups, $metaBase);
 
             default:
                 return $this->apiResponse(null, null, ["Tipo de reporte '{$tipo}' no soportado."], 422);
@@ -496,13 +653,14 @@ class AdminReportsController extends BaseApiController
         }
 
         $builder = $this->db->table('talents t')
-            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno')
+            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno, a.ap_materno as act_materno, a.domicilio as act_domicilio, COALESCE(t.region_trabajo, a.region_trabajo, 1) as act_region_trabajo')
             ->join('activists a', 'a.id = t.activist_id', 'left')
             ->where('t.deleted_at IS NULL');
 
-        if (!empty($filtros['activist_id'])) {
-            $builder->where('t.activist_id', (int) $filtros['activist_id']);
-        }
+        $activistIds = $this->parseMultiIntList($filtros['activist_ids'] ?? $filtros['activist_id'] ?? null);
+        $regiones    = $this->parseMultiIntList($filtros['regiones'] ?? $filtros['region_trabajo'] ?? null);
+        $this->applyActivistAndRegionFilters($builder, $activistIds, $regiones);
+
         if (!empty($filtros['clasificacion'])) {
             $builder->where('t.clasificacion', (string) $filtros['clasificacion']);
         }
@@ -608,11 +766,14 @@ class AdminReportsController extends BaseApiController
             'ID', 'UUID', 'Clasificación', 'Nombre', 'Apellido Paterno', 'Apellido Materno',
             'Teléfono', 'Domicilio Completo', 'CP', 'Clave Estado', 'Clave Municipio', 'Clave Localidad',
             'Sección', 'Vigencia', 'Clave de Elector', 'CURP', 'Latitud', 'Longitud',
-            'Validación', 'Activista', 'Fecha Registro',
+            'Validación', 'Activista', 'Región de Trabajo', 'Fecha Registro',
         ];
 
         $normalized = [];
         foreach ($rows as $r) {
+            $actFullName   = trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '') . ' ' . ($r['act_materno'] ?? ''));
+            $regionTrabajo = (int) ($r['act_region_trabajo'] ?? $r['region_trabajo'] ?? 1);
+
             $normalized[] = [
                 (int) $r['id'],
                 (string) $r['uuid'],
@@ -633,7 +794,8 @@ class AdminReportsController extends BaseApiController
                 (float) $r['lat'],
                 (float) $r['lng'],
                 (string) $r['validacion'],
-                trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '')),
+                $actFullName,
+                $regionTrabajo,
                 (string) $r['created_at'],
             ];
         }
@@ -673,13 +835,15 @@ class AdminReportsController extends BaseApiController
                 . 'th{background:#f1f5f9;}'
                 . '</style></head><body>'
                 . '<h1>Red Ciudadana de Talentos — Reporte de Padrón (' . count($normalized) . ' registros)</h1>'
-                . '<table><thead><tr><th>ID</th><th>Clasificación</th><th>Nombre Completo</th><th>Teléfono</th><th>Edo/Mun/Loc</th><th>Sección</th><th>CP</th><th>Validación</th></tr></thead><tbody>';
+                . '<table><thead><tr><th>ID</th><th>Clasificación</th><th>Nombre Completo</th><th>Teléfono</th><th>Edo/Mun/Loc</th><th>Sección</th><th>CP</th><th>Activista</th><th>Región</th><th>Validación</th></tr></thead><tbody>';
 
             foreach ($rows as $r) {
-                $fullName = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno'] . ' ' . ($r['ap_materno'] ?? '')));
-                $loc      = htmlspecialchars("{$r['estado_clave']}/{$r['municipio_clave']}/{$r['localidad_clave']}");
-                $clasif   = htmlspecialchars((string) ($r['clasificacion'] ?? 'Conector'));
-                $html .= "<tr><td>{$r['id']}</td><td>{$clasif}</td><td>{$fullName}</td><td>{$r['telefono']}</td><td>{$loc}</td><td>{$r['seccion']}</td><td>{$r['codigo_postal']}</td><td>{$r['validacion']}</td></tr>";
+                $fullName    = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno'] . ' ' . ($r['ap_materno'] ?? '')));
+                $loc         = htmlspecialchars("{$r['estado_clave']}/{$r['municipio_clave']}/{$r['localidad_clave']}");
+                $clasif      = htmlspecialchars((string) ($r['clasificacion'] ?? 'Conector'));
+                $actFullName = htmlspecialchars(trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '') . ' ' . ($r['act_materno'] ?? '')));
+                $regTrab     = (int) ($r['act_region_trabajo'] ?? $r['region_trabajo'] ?? 1);
+                $html .= "<tr><td>{$r['id']}</td><td>{$clasif}</td><td>{$fullName}</td><td>{$r['telefono']}</td><td>{$loc}</td><td>{$r['seccion']}</td><td>{$r['codigo_postal']}</td><td>{$actFullName}</td><td>{$regTrab}</td><td>{$r['validacion']}</td></tr>";
             }
             $html .= '</tbody></table></body></html>';
 
@@ -696,6 +860,8 @@ class AdminReportsController extends BaseApiController
         if ($formato === 'geojson') {
             $features = [];
             foreach ($rows as $r) {
+                $actFullName   = trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '') . ' ' . ($r['act_materno'] ?? ''));
+                $regionTrabajo = (int) ($r['act_region_trabajo'] ?? $r['region_trabajo'] ?? 1);
                 $features[] = [
                     'type'       => 'Feature',
                     'geometry'   => [
@@ -703,13 +869,15 @@ class AdminReportsController extends BaseApiController
                         'coordinates' => [(float) $r['lng'], (float) $r['lat']],
                     ],
                     'properties' => [
-                        'id'            => (int) $r['id'],
-                        'uuid'          => (string) $r['uuid'],
-                        'clasificacion' => (string) ($r['clasificacion'] ?? 'Conector'),
-                        'nombre'        => trim($r['nombre'] . ' ' . $r['ap_paterno']),
-                        'seccion'       => (int) $r['seccion'],
-                        'cp'            => (string) $r['codigo_postal'],
-                        'validacion'    => (string) $r['validacion'],
+                        'id'             => (int) $r['id'],
+                        'uuid'           => (string) $r['uuid'],
+                        'clasificacion'  => (string) ($r['clasificacion'] ?? 'Conector'),
+                        'nombre'         => trim($r['nombre'] . ' ' . $r['ap_paterno']),
+                        'seccion'        => (int) $r['seccion'],
+                        'cp'             => (string) $r['codigo_postal'],
+                        'activista'      => $actFullName,
+                        'region_trabajo' => $regionTrabajo,
+                        'validacion'     => (string) $r['validacion'],
                     ],
                 ];
             }
@@ -724,8 +892,10 @@ class AdminReportsController extends BaseApiController
             $kml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
                 . '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Red Ciudadana de Talentos</name>';
             foreach ($rows as $r) {
-                $name = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno']));
-                $desc = htmlspecialchars("Clasificación: {$r['clasificacion']} | Sección: {$r['seccion']} | CP: {$r['codigo_postal']} | Estatus: {$r['validacion']}");
+                $name          = htmlspecialchars(trim($r['nombre'] . ' ' . $r['ap_paterno']));
+                $actFullName   = trim(($r['act_nombre'] ?? '') . ' ' . ($r['act_paterno'] ?? '') . ' ' . ($r['act_materno'] ?? ''));
+                $regionTrabajo = (int) ($r['act_region_trabajo'] ?? $r['region_trabajo'] ?? 1);
+                $desc          = htmlspecialchars("Clasificación: {$r['clasificacion']} | Activista: {$actFullName} | Región: {$regionTrabajo} | Sección: {$r['seccion']} | CP: {$r['codigo_postal']} | Estatus: {$r['validacion']}");
                 $kml .= "<Placemark><name>{$name}</name><description>{$desc}</description><Point><coordinates>{$r['lng']},{$r['lat']},0</coordinates></Point></Placemark>";
             }
             $kml .= '</Document></kml>';

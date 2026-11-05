@@ -6,7 +6,7 @@
         <input
           v-model="filters.q"
           type="text"
-          placeholder="Buscar por nombre, usuario o teléfono..."
+          placeholder="Buscar por nombre, usuario, domicilio o tel..."
           class="px-3 py-2 rounded-lg border border-slate-300 text-sm w-64"
           @keyup.enter="loadActivists"
         />
@@ -15,6 +15,14 @@
           <option value="activo">Activos</option>
           <option value="suspendido">Suspendidos</option>
         </select>
+        <input
+          v-model.number="filters.region_trabajo"
+          type="number"
+          min="0"
+          placeholder="Región de Trabajo"
+          class="px-3 py-2 rounded-lg border border-slate-300 text-sm w-40"
+          @keyup.enter="loadActivists"
+        />
         <input
           v-model.number="filters.estado_id"
           type="number"
@@ -52,7 +60,7 @@
             <tr class="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
               <th class="py-3 px-4">Activista / Usuario</th>
               <th class="py-3 px-4">Teléfono</th>
-              <th class="py-3 px-4">Zona Operativa</th>
+              <th class="py-3 px-4">Región / Zona / Domicilio</th>
               <th class="py-3 px-4">Avance Meta (50 Con · 50 Exp · 50 Ven)</th>
               <th class="py-3 px-4">Estatus</th>
               <th class="py-3 px-4 text-right">Acciones</th>
@@ -67,9 +75,17 @@
               <td class="py-3 px-4 font-mono font-semibold text-slate-800">
                 {{ act.telefono }}
               </td>
-              <td class="py-3 px-4 text-xs text-slate-700">
-                <div class="font-semibold">{{ act.estado_nombre }}</div>
-                <div class="text-slate-400">{{ act.municipio_nombre || 'Estatal' }}</div>
+              <td class="py-3 px-4 text-xs text-slate-700 space-y-0.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                    Región {{ act.region_trabajo ?? 1 }}
+                  </span>
+                  <span class="font-semibold">{{ act.estado_nombre }}</span>
+                  <span class="text-slate-400">· {{ act.municipio_nombre || 'Estatal' }}</span>
+                </div>
+                <div class="text-slate-500 text-[11px] max-w-xs truncate" :title="act.domicilio || ''">
+                  <i class="pi pi-map-marker text-[10px] mr-1"></i>{{ act.domicilio || 'Sin domicilio registrado' }}
+                </div>
               </td>
               <td class="py-3 px-4">
                 <div class="text-xs font-semibold mb-1">
@@ -182,9 +198,32 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Domicilio del Activista *</label>
+            <input
+              v-model="form.domicilio"
+              required
+              maxlength="300"
+              placeholder="Calle, número, colonia, código postal y municipio"
+              class="w-full px-3 py-2 rounded-lg border border-slate-300"
+            />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Numérica del Estado (1-32) *</label>
+              <label class="block text-xs font-semibold text-emerald-700 mb-1">Región de Trabajo (Entero) *</label>
+              <input
+                v-model.number="form.region_trabajo"
+                type="number"
+                min="1"
+                step="1"
+                required
+                placeholder="Ej. 1"
+                class="w-full px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50/40 font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Estado (1-32) *</label>
               <input
                 v-model.number="form.estado_id"
                 type="number"
@@ -196,7 +235,7 @@
               />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Numérica de Municipio (Opcional)</label>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Clave Municipio (Opcional)</label>
               <input
                 v-model.number="form.municipio_id"
                 type="number"
@@ -317,6 +356,7 @@ const activists = ref([]);
 const filters = reactive({
   q: '',
   status: '',
+  region_trabajo: 0,
   estado_id: 0,
 });
 
@@ -331,6 +371,8 @@ const form = reactive({
   ap_materno: '',
   telefono: '',
   email: '',
+  domicilio: '',
+  region_trabajo: 1,
   estado_id: 9,
   municipio_id: null,
   meta: 150,
@@ -345,6 +387,7 @@ async function loadActivists() {
   const params = {};
   if (filters.q) params.q = filters.q;
   if (filters.status) params.status = filters.status;
+  if (filters.region_trabajo > 0) params.region_trabajo = filters.region_trabajo;
   if (filters.estado_id > 0) params.estado_id = filters.estado_id;
   const { data: res } = await api.get('/admin/activists', { params });
   activists.value = res.data || [];
@@ -358,6 +401,8 @@ function openCreateModal() {
     ap_materno: '',
     telefono: '',
     email: '',
+    domicilio: '',
+    region_trabajo: 1,
     estado_id: 9,
     municipio_id: null,
     meta: 150,
@@ -379,6 +424,8 @@ function openEditModal(act) {
     ap_materno: act.ap_materno || '',
     telefono: act.telefono,
     email: act.email || '',
+    domicilio: act.domicilio || '',
+    region_trabajo: act.region_trabajo ?? 1,
     estado_id: act.estado_id,
     municipio_id: act.municipio_id,
     meta: act.meta || 150,

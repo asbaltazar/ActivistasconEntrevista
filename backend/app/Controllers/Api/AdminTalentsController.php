@@ -22,6 +22,7 @@ class AdminTalentsController extends BaseApiController
         $page            = max(1, (int) ($this->request->getGet('page') ?? 1));
         $perPage         = min(100, max(10, (int) ($this->request->getGet('per_page') ?? 25)));
         $activistId      = (int) ($this->request->getGet('activist_id') ?? 0);
+        $regionTrabajo   = (int) ($this->request->getGet('region_trabajo') ?? 0);
         $clasificacion   = trim((string) ($this->request->getGet('clasificacion') ?? ''));
         $estadoClave     = trim((string) ($this->request->getGet('estado_clave') ?? $this->request->getGet('estado_id') ?? ''));
         $municipioClave  = trim((string) ($this->request->getGet('municipio_clave') ?? $this->request->getGet('municipio_id') ?? ''));
@@ -35,12 +36,15 @@ class AdminTalentsController extends BaseApiController
         $search          = trim((string) ($this->request->getGet('q') ?? ''));
 
         $builder = $this->db->table('talents t')
-            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno')
+            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno, a.ap_materno as act_materno, COALESCE(t.region_trabajo, a.region_trabajo, 1) as act_region_trabajo')
             ->join('activists a', 'a.id = t.activist_id', 'left')
             ->where('t.deleted_at IS NULL');
 
         if ($activistId > 0) {
             $builder->where('t.activist_id', $activistId);
+        }
+        if ($regionTrabajo > 0) {
+            $builder->where('COALESCE(t.region_trabajo, a.region_trabajo, 1)', $regionTrabajo);
         }
         if ($clasificacion !== '') {
             $builder->where('t.clasificacion', $clasificacion);
@@ -110,7 +114,7 @@ class AdminTalentsController extends BaseApiController
     public function show(int $id): ResponseInterface
     {
         $row = $this->db->table('talents t')
-            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno')
+            ->select('t.*, a.nombre as act_nombre, a.ap_paterno as act_paterno, a.ap_materno as act_materno, COALESCE(t.region_trabajo, a.region_trabajo, 1) as act_region_trabajo')
             ->join('activists a', 'a.id = t.activist_id', 'left')
             ->where('t.id', $id)
             ->where('t.deleted_at IS NULL')
@@ -330,7 +334,8 @@ SVG;
             'id'                 => (int) $row['id'],
             'uuid'               => (string) $row['uuid'],
             'activist_id'        => (int) $row['activist_id'],
-            'activist_nombre'    => trim(($row['act_nombre'] ?? '') . ' ' . ($row['act_paterno'] ?? '')),
+            'activist_nombre'    => trim(($row['act_nombre'] ?? '') . ' ' . ($row['act_paterno'] ?? '') . ' ' . ($row['act_materno'] ?? '')),
+            'region_trabajo'     => (int) ($row['act_region_trabajo'] ?? $row['region_trabajo'] ?? 1),
             'clasificacion'      => (string) ($row['clasificacion'] ?? 'Conector'),
             'pregunta_1_texto'   => $row['pregunta_1_texto'] ?? 'Pregunta1',
             'pregunta_2_texto'   => $row['pregunta_2_texto'] ?? 'Pregunta2',
